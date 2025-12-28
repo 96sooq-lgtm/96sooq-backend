@@ -4,6 +4,9 @@ from contextlib import asynccontextmanager
 import uvicorn
 from config.settings import Settings
 from routes import health
+from routes.admin import router as admin_router
+from routes.categories import admin_router as category_admin_router
+from routes.categories import public_router as category_public_router
 
 # Load settings
 settings = Settings()
@@ -35,6 +38,9 @@ app.add_middleware(
 
 # Include routers
 app.include_router(health.router)
+app.include_router(admin_router)
+app.include_router(category_admin_router)
+app.include_router(category_public_router)
 
 @app.get("/")
 async def root():
