@@ -46,3 +46,70 @@ class CategoryOut(BaseModel):
 	is_active: bool
 	created_at: Optional[str] = None
 	updated_at: Optional[str] = None
+
+
+# Subscription schemas
+class SubscriptionCreate(BaseModel):
+	plan_name: str
+	price: float
+	duration: int  # Duration in days
+	description: Optional[str] = None
+	is_active: bool = True
+
+
+class SubscriptionUpdate(BaseModel):
+	plan_name: Optional[str] = None
+	price: Optional[float] = None
+	duration: Optional[int] = None
+	description: Optional[str] = None
+	is_active: Optional[bool] = None
+
+
+class SubscriptionOut(BaseModel):
+	id: str
+	plan_name: str
+	price: float
+	duration: int
+	description: Optional[str] = None
+	is_active: bool
+	created_at: Optional[str] = None
+	updated_at: Optional[str] = None
+
+
+# Listing schemas
+class ListingCreate(BaseModel):
+	title: str
+	description: str
+	category_id: str
+	user_id: str
+	price: float
+	location: str
+	phone_number: Optional[str] = None
+	image_url: Optional[str] = None
+	is_active: bool = True
+
+
+class ListingUpdate(BaseModel):
+	title: Optional[str] = None
+	description: Optional[str] = None
+	category_id: Optional[str] = None
+	price: Optional[float] = None
+	location: Optional[str] = None
+	phone_number: Optional[str] = None
+	image_url: Optional[str] = None
+	is_active: Optional[bool] = None
+
+
+class ListingOut(BaseModel):
+	id: str
+	title: str
+	description: str
+	category_id: str
+	user_id: str
+	price: float
+	location: str
+	phone_number: Optional[str] = None
+	image_url: Optional[str] = None
+	is_active: bool
+	created_at: Optional[str] = None
+	updated_at: Optional[str] = None

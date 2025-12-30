@@ -1,0 +1,9 @@
+nohup: ignoring input
+INFO:     Will watch for changes in these directories: ['/workspaces/96sooq-backend/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [52539] using StatReload
+INFO:     Started server process [52554]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+Starting 96sooq Backend API...
+INFO:     127.0.0.1:36480 - "GET /api/health HTTP/1.1" 200 OK

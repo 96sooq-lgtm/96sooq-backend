@@ -7,6 +7,9 @@ from routes import health
 from routes.admin import router as admin_router
 from routes.categories import admin_router as category_admin_router
 from routes.categories import public_router as category_public_router
+from routes.listings import admin_router as listing_admin_router
+from routes.listings import public_router as listing_public_router
+from routes.listings import user_router as listing_user_router
 
 # Load settings
 settings = Settings()
@@ -41,6 +44,9 @@ app.include_router(health.router)
 app.include_router(admin_router)
 app.include_router(category_admin_router)
 app.include_router(category_public_router)
+app.include_router(listing_admin_router)
+app.include_router(listing_public_router)
+app.include_router(listing_user_router)
 
 @app.get("/")
 async def root():
