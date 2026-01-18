@@ -8,11 +8,11 @@ class Settings(BaseSettings):
     
     # Supabase Configuration
     supabase_url: Optional[str] = None
-    supabase_key: Optional[str] = None
+    supabase_service_role_key: str
     
     # JWT/Auth
-    jwt_secret: Optional[str] = None
-    jwt_algorithm: str = "HS256"
+    secret_key: str = "your-secret-key-CHANGE-IN-PRODUCTION"
+    algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     
     # Database
