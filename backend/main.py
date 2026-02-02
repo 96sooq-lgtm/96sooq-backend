@@ -8,6 +8,10 @@ from routes.admin import router as admin_router
 from routes.auth import router as auth_router
 from routes.categories import admin_router as category_admin_router
 from routes.categories import user_router as category_user_router
+from routes.stores import router as stores_router
+from routes.stores import admin_router as admin_stores_router
+from routes.listings import router as listings_router
+from routes.listings import admin_router as admin_listings_router
 
 # Load settings
 settings = Settings()
@@ -42,7 +46,12 @@ app.include_router(health.router)
 app.include_router(admin_router)
 app.include_router(auth_router)
 app.include_router(category_admin_router)
+app.include_router(category_admin_router)
 app.include_router(category_user_router)
+app.include_router(stores_router)
+app.include_router(admin_stores_router)
+app.include_router(listings_router)
+app.include_router(admin_listings_router)
 
 
 @app.get("/")

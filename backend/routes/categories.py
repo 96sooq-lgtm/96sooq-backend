@@ -40,6 +40,22 @@ async def create_category(payload: schemas.CategoryCreate):
     data = payload.dict(exclude={"name"})
     data["name_en"] = name_en
     data["name_ar"] = name_ar
+    
+    if payload.image_url:
+        data["image_url"] = payload.image_url
+        
+    if payload.parent_id:
+        # Verify parent exists
+        parent = db.select_one("categories", payload.parent_id)
+        if not parent:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Parent category not found"
+            )
+        data["parent_id"] = payload.parent_id
+        
+    if payload.attributes_schema:
+        data["attributes_schema"] = payload.attributes_schema
 
     category = db.insert("categories", data)
     
@@ -109,6 +125,28 @@ async def update_category(category_id: str, payload: schemas.CategoryUpdate):
     if payload.is_active is not None:
         update_data["is_active"] = payload.is_active
 
+    if payload.image_url is not None:
+        update_data["image_url"] = payload.image_url
+        
+    if payload.parent_id is not None:
+        # Prevent self-parenting
+        if payload.parent_id == category_id:
+             raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Category cannot be its own parent"
+            )
+        # Verify parent exists
+        parent = db.select_one("categories", payload.parent_id)
+        if not parent:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Parent category not found"
+            )
+        update_data["parent_id"] = payload.parent_id
+
+    if payload.attributes_schema is not None:
+        update_data["attributes_schema"] = payload.attributes_schema
+
     if not update_data:
         return existing
 
@@ -148,12 +186,29 @@ async def delete_category(category_id: str):
 
 @user_router.get("/", response_model=list[schemas.CategoryOut])
 async def list_active_categories(
+    parent_id: str | None = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500)
 ):
     def query_func(table):
         # Filter for active categories only
-        return table.select("*").eq("is_active", True).range(skip, skip + limit - 1).order("name_en")
+        query = table.select("*").eq("is_active", True)
+        
+        if parent_id:
+            query = query.eq("parent_id", parent_id)
+        else:
+            # If no parent_id, fetch root categories (parent_id is null)
+            query = query.is_("parent_id", "null")
+            
+        return query.range(skip, skip + limit - 1).order("name_en")
 
     result = db.query("categories", query_func)
     return result.data if result.data else []
+
+
+@user_router.get("/{category_id}/is-leaf")
+async def check_category_is_leaf(category_id: str):
+    # A category is a leaf if it has no children
+    children = db.select("categories", filters={"parent_id": category_id})
+    return {"is_leaf": not bool(children), "id": category_id}
+

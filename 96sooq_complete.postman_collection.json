@@ -1,0 +1,1193 @@
+{
+    "info": {
+        "_postman_id": "96sooq-complete-api",
+        "name": "96sooq Platform - Complete API",
+        "description": "Complete end-to-end API collection for 96sooq marketplace platform.\n\n**Features:**\n- OAuth & Phone OTP Authentication\n- Admin Panel APIs\n- Category Management (Hierarchical + Dynamic Attributes)\n- Store Management\n- Listing Management (Free first listing + Payment)\n- Approval Workflows\n\n**Setup:**\n1. Import this collection\n2. Set environment variables: `base_url`, `admin_token`, `customer_token`\n3. Run requests in order for best results",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "1. Authentication",
+            "item": [
+                {
+                    "name": "Admin Auth",
+                    "item": [
+                        {
+                            "name": "Admin Signup",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"name\": \"Admin User\",\n  \"email\": \"admin@96sooq.com\",\n  \"password\": \"SecurePass123!\"\n}"
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/admin/signup",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "admin",
+                                        "signup"
+                                    ]
+                                },
+                                "description": "Create a new admin account"
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Admin Login",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "exec": [
+                                            "if (pm.response.code === 200) {",
+                                            "    var jsonData = pm.response.json();",
+                                            "    pm.environment.set(\"admin_token\", jsonData.access_token);",
+                                            "    console.log(\"Admin token saved!\");",
+                                            "}"
+                                        ],
+                                        "type": "text/javascript"
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"email\": \"admin@96sooq.com\",\n  \"password\": \"SecurePass123!\"\n}"
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/admin/login",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "admin",
+                                        "login"
+                                    ]
+                                },
+                                "description": "Login as admin. Token is automatically saved to environment."
+                            },
+                            "response": []
+                        }
+                    ],
+                    "description": "Admin authentication endpoints"
+                },
+                {
+                    "name": "OAuth (Google/Apple/Facebook)",
+                    "item": [
+                        {
+                            "name": "Step 1 - Check User Exists",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "exec": [
+                                            "if (pm.response.code === 200) {",
+                                            "    var jsonData = pm.response.json();",
+                                            "    if (jsonData.exists && jsonData.access_token) {",
+                                            "        pm.environment.set(\"customer_token\", jsonData.access_token);",
+                                            "        console.log(\"User exists! Token saved.\");",
+                                            "    } else {",
+                                            "        console.log(\"New user - proceed to Step 2\");",
+                                            "    }",
+                                            "}"
+                                        ],
+                                        "type": "text/javascript"
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"provider\": \"google\",\n  \"provider_id\": \"google_123456789\",\n  \"email\": \"ahmed.ali@gmail.com\"\n}"
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/auth/oauth/check-user",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "auth",
+                                        "oauth",
+                                        "check-user"
+                                    ]
+                                },
+                                "description": "Check if OAuth user exists. If exists, returns token. If new, returns exists: false."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Step 2 - Complete Profile (New User)",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "exec": [
+                                            "if (pm.response.code === 200) {",
+                                            "    var jsonData = pm.response.json();",
+                                            "    pm.environment.set(\"customer_token\", jsonData.access_token);",
+                                            "    console.log(\"User created! Token saved.\");",
+                                            "}"
+                                        ],
+                                        "type": "text/javascript"
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"provider\": \"google\",\n  \"provider_id\": \"google_123456789\",\n  \"email\": \"ahmed.ali@gmail.com\",\n  \"name\": \"Ahmed Ali\",\n  \"phone_number\": \"+971501234567\",\n  \"profile_picture\": \"https://lh3.googleusercontent.com/a/default-user\"\n}"
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/auth/oauth/complete-profile",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "auth",
+                                        "oauth",
+                                        "complete-profile"
+                                    ]
+                                },
+                                "description": "Complete profile for new OAuth user. Provide name and phone number."
+                            },
+                            "response": []
+                        }
+                    ],
+                    "description": "OAuth authentication (Google, Apple, Facebook)"
+                },
+                {
+                    "name": "Phone OTP (Legacy)",
+                    "item": [
+                        {
+                            "name": "Send OTP",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"phone_number\": \"+971501234567\"\n}"
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/auth/send-otp",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "auth",
+                                        "send-otp"
+                                    ]
+                                },
+                                "description": "Send OTP to phone number. For testing, OTP is always '123456'."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Verify OTP",
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "exec": [
+                                            "if (pm.response.code === 200) {",
+                                            "    var jsonData = pm.response.json();",
+                                            "    pm.environment.set(\"customer_token\", jsonData.access_token);",
+                                            "    console.log(\"OTP verified! Token saved.\");",
+                                            "}"
+                                        ],
+                                        "type": "text/javascript"
+                                    }
+                                }
+                            ],
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"phone_number\": \"+971501234567\",\n  \"otp\": \"123456\"\n}"
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/auth/verify-otp",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "auth",
+                                        "verify-otp"
+                                    ]
+                                },
+                                "description": "Verify OTP. Use '123456' for testing."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Create User Profile",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{customer_token}}"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"name\": \"Ahmed Ali\"\n}"
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/auth/create-user",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "auth",
+                                        "create-user"
+                                    ]
+                                },
+                                "description": "Set user name after OTP verification."
+                            },
+                            "response": []
+                        }
+                    ],
+                    "description": "Legacy phone OTP authentication"
+                }
+            ],
+            "description": "All authentication methods"
+        },
+        {
+            "name": "2. Categories",
+            "item": [
+                {
+                    "name": "Admin - Category Management",
+                    "item": [
+                        {
+                            "name": "Create Root Category",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"name\": \"Vehicles\",\n  \"image_url\": \"https://cdn.example.com/vehicles.png\",\n  \"is_active\": true\n}"
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/admin/categories/",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "admin",
+                                        "categories",
+                                        ""
+                                    ]
+                                },
+                                "description": "Create a root category. Save the returned ID for sub-categories."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Create Sub-Category with Attributes",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"name\": \"Cars\",\n  \"parent_id\": \"550e8400-e29b-41d4-a716-446655440000\",\n  \"image_url\": \"https://cdn.example.com/cars.png\",\n  \"attributes_schema\": [\n    {\n      \"key\": \"fuel_type\",\n      \"label_en\": \"Fuel Type\",\n      \"label_ar\": \"نوع الوقود\",\n      \"type\": \"select\",\n      \"required\": true,\n      \"options\": [\"Petrol\", \"Diesel\", \"Hybrid\", \"Electric\"]\n    },\n    {\n      \"key\": \"year\",\n      \"label_en\": \"Year\",\n      \"label_ar\": \"سنة الصنع\",\n      \"type\": \"number\",\n      \"required\": true\n    },\n    {\n      \"key\": \"transmission\",\n      \"label_en\": \"Transmission\",\n      \"label_ar\": \"ناقل الحركة\",\n      \"type\": \"select\",\n      \"required\": true,\n      \"options\": [\"Automatic\", \"Manual\"]\n    },\n    {\n      \"key\": \"mileage\",\n      \"label_en\": \"Mileage (km)\",\n      \"label_ar\": \"المسافة المقطوعة\",\n      \"type\": \"number\",\n      \"required\": false\n    }\n  ],\n  \"is_active\": true\n}"
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/admin/categories/",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "admin",
+                                        "categories",
+                                        ""
+                                    ]
+                                },
+                                "description": "Create sub-category with dynamic attributes. Replace parent_id with actual ID from previous request."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "List All Categories (Admin)",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/api/admin/categories/",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "admin",
+                                        "categories",
+                                        ""
+                                    ]
+                                },
+                                "description": "List all categories (admin view)"
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Get Category Details",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/api/admin/categories/:id",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "admin",
+                                        "categories",
+                                        ":id"
+                                    ],
+                                    "variable": [
+                                        {
+                                            "key": "id",
+                                            "value": "660e8400-e29b-41d4-a716-446655440001"
+                                        }
+                                    ]
+                                },
+                                "description": "Get specific category with attributes_schema"
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Update Category",
+                            "request": {
+                                "method": "PUT",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"name\": \"Cars - Updated\",\n  \"is_active\": true\n}"
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/admin/categories/:id",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "admin",
+                                        "categories",
+                                        ":id"
+                                    ],
+                                    "variable": [
+                                        {
+                                            "key": "id",
+                                            "value": "660e8400-e29b-41d4-a716-446655440001"
+                                        }
+                                    ]
+                                },
+                                "description": "Update category details"
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Delete Category",
+                            "request": {
+                                "method": "DELETE",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/api/admin/categories/:id",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "admin",
+                                        "categories",
+                                        ":id"
+                                    ],
+                                    "variable": [
+                                        {
+                                            "key": "id",
+                                            "value": "category-id-here"
+                                        }
+                                    ]
+                                },
+                                "description": "Delete a category"
+                            },
+                            "response": []
+                        }
+                    ],
+                    "description": "Admin endpoints for category management"
+                },
+                {
+                    "name": "Public - Browse Categories",
+                    "item": [
+                        {
+                            "name": "Get Root Categories",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/categories/",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "categories",
+                                        ""
+                                    ]
+                                },
+                                "description": "Get all root categories (parent_id is null)"
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Get Sub-Categories",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/categories/?parent_id=550e8400-e29b-41d4-a716-446655440000",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "categories",
+                                        ""
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "parent_id",
+                                            "value": "550e8400-e29b-41d4-a716-446655440000"
+                                        }
+                                    ]
+                                },
+                                "description": "Get sub-categories of a parent category"
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Check if Leaf Category",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/categories/:id/is-leaf",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "categories",
+                                        ":id",
+                                        "is-leaf"
+                                    ],
+                                    "variable": [
+                                        {
+                                            "key": "id",
+                                            "value": "660e8400-e29b-41d4-a716-446655440001"
+                                        }
+                                    ]
+                                },
+                                "description": "Check if category is a leaf node (can create listings)"
+                            },
+                            "response": []
+                        }
+                    ],
+                    "description": "Public endpoints for browsing categories"
+                }
+            ],
+            "description": "Category management (hierarchical + dynamic attributes)"
+        },
+        {
+            "name": "3. Stores",
+            "item": [
+                {
+                    "name": "User - Store Operations",
+                    "item": [
+                        {
+                            "name": "Create Store",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{customer_token}}"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"name\": \"Ahmed's Auto Shop\",\n  \"description\": \"Premium quality cars and auto parts in Dubai\",\n  \"logo_url\": \"https://cdn.example.com/store-logo.png\",\n  \"cover_image_url\": \"https://cdn.example.com/store-cover.jpg\"\n}"
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/stores/",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "stores",
+                                        ""
+                                    ]
+                                },
+                                "description": "Create a new store. Status will be 'pending_approval'."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "List All Active Stores",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/stores/",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "stores",
+                                        ""
+                                    ]
+                                },
+                                "description": "List all active stores (public)"
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "List My Stores",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{customer_token}}"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/api/stores/?user_id=current",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "stores",
+                                        ""
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "user_id",
+                                            "value": "current"
+                                        }
+                                    ]
+                                },
+                                "description": "List stores belonging to current user"
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Get Store Details",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/stores/:id",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "stores",
+                                        ":id"
+                                    ],
+                                    "variable": [
+                                        {
+                                            "key": "id",
+                                            "value": "store-id-here"
+                                        }
+                                    ]
+                                },
+                                "description": "Get specific store details"
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Update My Store",
+                            "request": {
+                                "method": "PUT",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{customer_token}}"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"description\": \"Updated description - Best cars in UAE!\"\n}"
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/stores/:id",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "stores",
+                                        ":id"
+                                    ],
+                                    "variable": [
+                                        {
+                                            "key": "id",
+                                            "value": "store-id-here"
+                                        }
+                                    ]
+                                },
+                                "description": "Update store (owner only)"
+                            },
+                            "response": []
+                        }
+                    ],
+                    "description": "User store operations"
+                },
+                {
+                    "name": "Admin - Store Approval",
+                    "item": [
+                        {
+                            "name": "Approve Store",
+                            "request": {
+                                "method": "PUT",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/api/admin/stores/:id/approve",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "admin",
+                                        "stores",
+                                        ":id",
+                                        "approve"
+                                    ],
+                                    "variable": [
+                                        {
+                                            "key": "id",
+                                            "value": "store-id-here"
+                                        }
+                                    ]
+                                },
+                                "description": "Approve a pending store"
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Reject Store",
+                            "request": {
+                                "method": "PUT",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/api/admin/stores/:id/reject?reason=Inappropriate content",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "admin",
+                                        "stores",
+                                        ":id",
+                                        "reject"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "reason",
+                                            "value": "Inappropriate content"
+                                        }
+                                    ],
+                                    "variable": [
+                                        {
+                                            "key": "id",
+                                            "value": "store-id-here"
+                                        }
+                                    ]
+                                },
+                                "description": "Reject a store with reason"
+                            },
+                            "response": []
+                        }
+                    ],
+                    "description": "Admin store approval endpoints"
+                }
+            ],
+            "description": "Store management"
+        },
+        {
+            "name": "4. Listings",
+            "item": [
+                {
+                    "name": "User - Listing Operations",
+                    "item": [
+                        {
+                            "name": "Create First Listing (FREE)",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{customer_token}}"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"category_id\": \"660e8400-e29b-41d4-a716-446655440001\",\n  \"store_id\": null,\n  \"title\": \"Toyota Camry 2020 - Excellent Condition\",\n  \"description\": \"Single owner, full service history. GCC specs. Price negotiable.\",\n  \"price\": 75000,\n  \"currency\": \"AED\",\n  \"plan_id\": null,\n  \"attributes_values\": {\n    \"fuel_type\": \"Petrol\",\n    \"year\": 2020,\n    \"transmission\": \"Automatic\",\n    \"mileage\": 35000\n  },\n  \"location\": {\n    \"lat\": 25.2048,\n    \"lng\": 55.2708,\n    \"address\": \"Dubai Marina, Dubai, UAE\"\n  },\n  \"images\": [\n    \"https://cdn.example.com/car1.jpg\",\n    \"https://cdn.example.com/car2.jpg\",\n    \"https://cdn.example.com/car3.jpg\"\n  ]\n}"
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/listings/",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "listings",
+                                        ""
+                                    ]
+                                },
+                                "description": "Create first listing (FREE). No plan_id needed. Status will be 'pending_approval'."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Create Second Listing (PAID)",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{customer_token}}"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"category_id\": \"660e8400-e29b-41d4-a716-446655440001\",\n  \"title\": \"Honda Civic 2019 - Like New\",\n  \"description\": \"Low mileage, excellent condition\",\n  \"price\": 65000,\n  \"currency\": \"AED\",\n  \"plan_id\": \"plan-001\",\n  \"attributes_values\": {\n    \"fuel_type\": \"Petrol\",\n    \"year\": 2019,\n    \"transmission\": \"Automatic\",\n    \"mileage\": 25000\n  },\n  \"location\": {\n    \"lat\": 25.2048,\n    \"lng\": 55.2708,\n    \"address\": \"Dubai Marina, UAE\"\n  },\n  \"images\": [\n    \"https://cdn.example.com/honda1.jpg\"\n  ]\n}"
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/listings/",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "listings",
+                                        ""
+                                    ]
+                                },
+                                "description": "Create 2nd+ listing (PAID). Requires plan_id. Will return 402 error if plan_id is missing."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "List All Active Listings",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/listings/",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "listings",
+                                        ""
+                                    ]
+                                },
+                                "description": "List all active listings (public)"
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "List Listings by Category",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/listings/?category_id=660e8400-e29b-41d4-a716-446655440001",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "listings",
+                                        ""
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "category_id",
+                                            "value": "660e8400-e29b-41d4-a716-446655440001"
+                                        }
+                                    ]
+                                },
+                                "description": "Filter listings by category"
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Search Listings",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/listings/?search=Toyota Camry",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "listings",
+                                        ""
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "search",
+                                            "value": "Toyota Camry"
+                                        }
+                                    ]
+                                },
+                                "description": "Search listings by keyword"
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Get Listing Details",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/listings/:id",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "listings",
+                                        ":id"
+                                    ],
+                                    "variable": [
+                                        {
+                                            "key": "id",
+                                            "value": "listing-id-here"
+                                        }
+                                    ]
+                                },
+                                "description": "Get specific listing with all details"
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Update My Listing",
+                            "request": {
+                                "method": "PUT",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{customer_token}}"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"price\": 72000,\n  \"description\": \"Price reduced! Urgent sale.\"\n}"
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/listings/:id",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "listings",
+                                        ":id"
+                                    ],
+                                    "variable": [
+                                        {
+                                            "key": "id",
+                                            "value": "listing-id-here"
+                                        }
+                                    ]
+                                },
+                                "description": "Update listing (owner only, cannot change status)"
+                            },
+                            "response": []
+                        }
+                    ],
+                    "description": "User listing operations"
+                },
+                {
+                    "name": "Admin - Listing Approval",
+                    "item": [
+                        {
+                            "name": "List All Pending Listings",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/api/admin/listings/?status=pending_approval",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "admin",
+                                        "listings",
+                                        ""
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "status",
+                                            "value": "pending_approval"
+                                        }
+                                    ]
+                                },
+                                "description": "List all listings awaiting approval"
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "List All Listings (Any Status)",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/api/admin/listings/",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "admin",
+                                        "listings",
+                                        ""
+                                    ]
+                                },
+                                "description": "List all listings regardless of status"
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Approve Listing",
+                            "request": {
+                                "method": "PUT",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/api/admin/listings/:id/approve",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "admin",
+                                        "listings",
+                                        ":id",
+                                        "approve"
+                                    ],
+                                    "variable": [
+                                        {
+                                            "key": "id",
+                                            "value": "listing-id-here"
+                                        }
+                                    ]
+                                },
+                                "description": "Approve a listing. Status becomes 'active'."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Reject Listing",
+                            "request": {
+                                "method": "PUT",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/api/admin/listings/:id/reject?reason=Inappropriate images",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "admin",
+                                        "listings",
+                                        ":id",
+                                        "reject"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "reason",
+                                            "value": "Inappropriate images"
+                                        }
+                                    ],
+                                    "variable": [
+                                        {
+                                            "key": "id",
+                                            "value": "listing-id-here"
+                                        }
+                                    ]
+                                },
+                                "description": "Reject a listing with reason"
+                            },
+                            "response": []
+                        }
+                    ],
+                    "description": "Admin listing approval endpoints"
+                }
+            ],
+            "description": "Listing management (Free first listing + Payment)"
+        }
+    ],
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://localhost:8000",
+            "type": "string"
+        }
+    ]
+}
