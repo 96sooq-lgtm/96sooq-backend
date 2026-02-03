@@ -325,10 +325,9 @@ PUT /api/admin/listings/{listing_id}/reject?reason=Inappropriate%20content
 Authorization: Bearer <admin_token>
 ```
 
-**Same for Stores:**
-- `GET /api/admin/stores/` (filter by status if needed)
-- `PUT /api/admin/stores/{store_id}/approve`
-- `PUT /api/admin/stores/{store_id}/reject`
+**Same for Stores (Manual Override):**
+- `PUT /api/admin/stores/{store_id}/approve` (Re-activate)
+- `PUT /api/admin/stores/{store_id}/reject` (Suspend)
 
 ---
 
@@ -569,7 +568,8 @@ customer_token = <JWT from OAuth or OTP>
 - Frontend dynamically builds form based on schema
 
 ### 3. Approval Workflow
-- All listings and stores start as `pending_approval`
+- Listings start as `pending_approval`
+- **Stores are auto-approved** (status = `active`)
 - Admin uses `/approve` or `/reject` endpoints
 - Only `active` items are visible to public
 

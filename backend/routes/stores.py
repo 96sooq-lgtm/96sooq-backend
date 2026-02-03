@@ -40,7 +40,7 @@ async def create_store(
     
     data = payload.dict()
     data["user_id"] = user_id
-    data["status"] = "pending_approval" # Default to pending
+    data["status"] = "active" # Auto-approve stores as per new requirement
     
     # If no plan provided, maybe assign a default free plan if exists?
     # Keeping it simple for MVP.
@@ -117,6 +117,25 @@ async def update_store(
 # -------------------------------------------------
 # ADMIN ENDPOINTS
 # -------------------------------------------------
+
+@admin_router.get("/", response_model=List[schemas.StoreOut])
+async def list_all_stores_admin(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    status: Optional[str] = None
+):
+    """
+    Admin: List all stores with optional status filter.
+    """
+    def query_func(table):
+        query = table.select("*")
+        if status:
+            query = query.eq("status", status)
+        return query.range(skip, skip + limit - 1).order("created_at", desc=True)
+
+    result = db.query("stores", query_func)
+    return result.data if result.data else []
+
 
 @admin_router.put("/{store_id}/approve")
 async def approve_store(store_id: str):
