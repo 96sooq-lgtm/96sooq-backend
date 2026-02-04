@@ -539,6 +539,33 @@ async function submitListing(formData, selectedCategoryId) {
 | GET | `/api/admin/listings/` | Admin | List all listings (filter: `?status=pending_approval`) |
 | PUT | `/api/admin/listings/{id}/approve` | Admin | Approve listing |
 | PUT | `/api/admin/listings/{id}/reject?reason=...` | Admin | Reject listing |
+| PUT | `/api/listings/{id}/status` | Customer | Mark sold/expired/draft |
+
+### Reviews
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/api/reviews/` | Customer | Create store review |
+| GET | `/api/reviews/store/{id}` | None | List reviews for a store |
+
+### Chat
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/api/chat/conversations` | Customer | Start conversation |
+| GET | `/api/chat/conversations` | Customer | List my conversations |
+| POST | `/api/chat/messages` | Customer | Send message |
+| GET | `/api/chat/conversations/{id}/messages` | Customer | Get messages in conversation |
+
+### Ads (Banners)
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/api/ads/` | Customer | Create banner ad (pending payment) |
+| GET | `/api/ads/` | None | List active banner ads |
+
+### Pricing Plans (Admin)
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/api/plans/` | Admin | Create pricing plan |
+| GET | `/api/plans/` | Admin | List pricing plans |
 
 ---
 

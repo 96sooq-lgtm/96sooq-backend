@@ -170,3 +170,73 @@ class ListingOut(BaseModel):
     location: Optional[dict] = None
     created_at: Optional[str] = None
     # We might fetch images separately or include them here
+
+# -------------------------------------------------
+# 5. REVIEWS
+# -------------------------------------------------
+class StoreReviewCreate(BaseModel):
+    store_id: str
+    rating: int
+    comment: Optional[str] = None
+
+class StoreReviewOut(StoreReviewCreate):
+    id: str
+    reviewer_id: str
+    created_at: str
+
+# -------------------------------------------------
+# 6. CHAT & MESSAGES
+# -------------------------------------------------
+class ConversationCreate(BaseModel):
+    target_user_id: str
+    listing_id: Optional[str] = None
+
+class MessageCreate(BaseModel):
+    conversation_id: str
+    content: str
+
+class MessageOut(BaseModel):
+    id: str
+    conversation_id: str
+    sender_id: str
+    content: str
+    is_read: bool
+    created_at: str
+
+class ConversationOut(BaseModel):
+    id: str
+    user1_id: str
+    user2_id: str
+    listing_id: Optional[str] = None
+    last_message: Optional[MessageOut] = None
+
+# -------------------------------------------------
+# 7. ADS / BANNERS
+# -------------------------------------------------
+class AdBannerCreate(BaseModel):
+    name: str
+    image_url: str
+    link_url: Optional[str] = None
+    plan_id: Optional[str] = None
+
+class AdBannerOut(AdBannerCreate):
+    id: str
+    user_id: str
+    status: str
+    clicks: int
+    created_at: str
+
+# -------------------------------------------------
+# 8. PRICING PLANS
+# -------------------------------------------------
+class PlanCreate(BaseModel):
+    name_en: str
+    name_ar: str
+    type: str # listing, store, banner
+    price: float
+    duration_days: int
+    features: dict
+    is_active: bool = True
+
+class PlanOut(PlanCreate):
+    id: str

@@ -181,6 +181,31 @@ async def update_listing(
     return updated
 
 
+@router.put("/{listing_id}/status", response_model=schemas.ListingOut)
+async def update_listing_status(
+    listing_id: str, 
+    status: str = Query(..., regex="^(sold|expired|draft)$"),
+    current_user: dict = Depends(get_current_customer)
+):
+    """
+    Allow users to mark items as Sold, Expired, or Draft.
+    Cannot set to 'active' or 'rejected' (Admin only).
+    """
+    # Verify ownership
+    listing = db.select_one("listings", listing_id)
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+        
+    if listing["user_id"] != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Not authorized")
+        
+    updated = db.update("listings", listing_id, {"status": status})
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to update status")
+        
+    return updated
+
+
 
 # -------------------------------------------------
 # ADMIN ENDPOINTS
