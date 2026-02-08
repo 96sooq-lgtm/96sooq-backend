@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
 from typing import Optional
+from pydantic import Field
 
 class Settings(BaseSettings):
     # API Configuration
@@ -17,6 +18,15 @@ class Settings(BaseSettings):
     
     # Database
     database_url: Optional[str] = None
+    
+    # S3 Storage Configuration
+    aws_access_key_id: Optional[str] = None
+    aws_secret_access_key: Optional[str] = None
+    aws_region: str = "us-east-1"
+    aws_bucket_name: Optional[str] = None
+    aws_endpoint_url: Optional[str] = None # For Supabase/MinIO
+    cloudfront_url: Optional[str] = None # For CloudFront CDN
+    s3_signature_version: str = "s3v4"
     
     class Config:
         env_file = ".env"

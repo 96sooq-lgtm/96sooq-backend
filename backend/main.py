@@ -12,6 +12,7 @@ from routes.stores import router as stores_router
 from routes.stores import admin_router as admin_stores_router
 from routes.listings import router as listings_router
 from routes.listings import admin_router as admin_listings_router
+from routes.storage import router as storage_router
 
 # Load settings
 settings = Settings()
@@ -52,6 +53,7 @@ app.include_router(stores_router)
 app.include_router(admin_stores_router)
 app.include_router(listings_router)
 app.include_router(admin_listings_router)
+app.include_router(storage_router)
 
 
 @app.get("/")

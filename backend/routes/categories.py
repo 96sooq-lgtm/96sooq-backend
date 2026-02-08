@@ -2,7 +2,9 @@ from fastapi import APIRouter, HTTPException, status, Query, Depends
 from models import schemas
 from db.supabase_client import db
 from utils.auth import get_current_admin
-from utils.translation import translate_text
+from utils.storage import s3_client
+from typing import Optional
+import json
 
 # Admin Router
 admin_router = APIRouter(
@@ -18,18 +20,44 @@ user_router = APIRouter(
 )
 
 # -------------------------------------------------
+# HELPER FUNCTIONS
+# -------------------------------------------------
+
+def get_viewable_image_url(image_url_or_path: Optional[str]) -> Optional[str]:
+    """
+    Convert image URL or file path to a viewable URL.
+    - If it's already a full URL (http/https), return as-is
+    - If it's a file_path (starts with folder name), generate presigned URL
+    """
+    if not image_url_or_path:
+        return None
+    
+    # If it's already a full URL, return as-is
+    if image_url_or_path.startswith(('http://', 'https://')):
+        return image_url_or_path
+    
+    # If it's a file_path, generate presigned URL for viewing
+    if s3_client:
+        presigned_url = s3_client.generate_presigned_url(image_url_or_path, expiration=3600)
+        return presigned_url if presigned_url else image_url_or_path
+    
+    return image_url_or_path
+
+
+# -------------------------------------------------
 # ADMIN ENDPOINTS
 # -------------------------------------------------
 
 @admin_router.post("/", response_model=schemas.CategoryOut, status_code=status.HTTP_201_CREATED)
 async def create_category(payload: schemas.CategoryCreate):
-    # Auto-translate
-    translations = translate_text(payload.name)
-    name_en = translations["name_en"]
-    name_ar = translations["name_ar"]
-
+    """
+    Create a category or subcategory.
+    - For categories: name_en, name_ar, image_url (from /storage/upload)
+    - For subcategories: name_en, name_ar, image_url, parent_id
+      Subcategories automatically get default attributes_schema if not provided.
+    """
     # Check existence by English name
-    existing = db.select("categories", filters={"name_en": name_en})
+    existing = db.select("categories", filters={"name_en": payload.name_en})
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -37,9 +65,11 @@ async def create_category(payload: schemas.CategoryCreate):
         )
 
     # Prepare data for insertion
-    data = payload.dict(exclude={"name"})
-    data["name_en"] = name_en
-    data["name_ar"] = name_ar
+    data = {
+        "name_en": payload.name_en,
+        "name_ar": payload.name_ar,
+        "is_active": payload.is_active
+    }
     
     if payload.image_url:
         data["image_url"] = payload.image_url
@@ -54,7 +84,52 @@ async def create_category(payload: schemas.CategoryCreate):
             )
         data["parent_id"] = payload.parent_id
         
-    if payload.attributes_schema:
+        # Set default attributes_schema for subcategories if not provided
+        if not payload.attributes_schema:
+            # Default attributes for subcategories: name, price, description, image/video
+            default_attributes = [
+                {
+                    "name": "name",
+                    "type": "text",
+                    "label_en": "Name",
+                    "label_ar": "الاسم",
+                    "required": True
+                },
+                {
+                    "name": "price",
+                    "type": "number",
+                    "label_en": "Price",
+                    "label_ar": "السعر",
+                    "required": True
+                },
+                {
+                    "name": "description",
+                    "type": "textarea",
+                    "label_en": "Description",
+                    "label_ar": "الوصف",
+                    "required": False
+                },
+                {
+                    "name": "image",
+                    "type": "file",
+                    "label_en": "Image",
+                    "label_ar": "صورة",
+                    "required": False,
+                    "accept": "image/*"
+                },
+                {
+                    "name": "video",
+                    "type": "file",
+                    "label_en": "Video",
+                    "label_ar": "فيديو",
+                    "required": False,
+                    "accept": "video/*"
+                }
+            ]
+            data["attributes_schema"] = default_attributes
+        else:
+            data["attributes_schema"] = payload.attributes_schema
+    elif payload.attributes_schema:
         data["attributes_schema"] = payload.attributes_schema
 
     category = db.insert("categories", data)
@@ -64,6 +139,10 @@ async def create_category(payload: schemas.CategoryCreate):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create category"
         )
+    
+    # Ensure image URL is viewable
+    if category.get("image_url"):
+        category["image_url"] = get_viewable_image_url(category["image_url"])
     
     return category
 
@@ -78,7 +157,14 @@ async def list_categories_admin(
         return table.select("*").range(skip, skip + limit - 1).order("created_at", desc=True)
 
     result = db.query("categories", query_func)
-    return result.data if result.data else []
+    categories = result.data if result.data else []
+    
+    # Ensure all image URLs are viewable
+    for category in categories:
+        if category.get("image_url"):
+            category["image_url"] = get_viewable_image_url(category["image_url"])
+    
+    return categories
 
 
 @admin_router.get("/{category_id}", response_model=schemas.CategoryOut)
@@ -89,11 +175,20 @@ async def get_category(category_id: str):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Category not found"
         )
+    
+    # Ensure image URL is viewable
+    if category.get("image_url"):
+        category["image_url"] = get_viewable_image_url(category["image_url"])
+    
     return category
 
 
 @admin_router.put("/{category_id}", response_model=schemas.CategoryOut)
 async def update_category(category_id: str, payload: schemas.CategoryUpdate):
+    """
+    Update a category or subcategory.
+    Use image_url from /storage/upload endpoint.
+    """
     # Check if category exists
     existing = db.select_one("categories", category_id)
     if not existing:
@@ -105,10 +200,9 @@ async def update_category(category_id: str, payload: schemas.CategoryUpdate):
     update_data = {}
     
     # Handle name update if provided
-    if payload.name:
-        translations = translate_text(payload.name)
-        new_en = translations["name_en"]
-        new_ar = translations["name_ar"]
+    if payload.name_en is not None or payload.name_ar is not None:
+        new_en = payload.name_en if payload.name_en is not None else existing["name_en"]
+        new_ar = payload.name_ar if payload.name_ar is not None else existing["name_ar"]
         
         # Check uniqueness if name changed
         if new_en != existing["name_en"]:
@@ -148,6 +242,9 @@ async def update_category(category_id: str, payload: schemas.CategoryUpdate):
         update_data["attributes_schema"] = payload.attributes_schema
 
     if not update_data:
+        # Ensure image URL is viewable even if no updates
+        if existing.get("image_url"):
+            existing["image_url"] = get_viewable_image_url(existing["image_url"])
         return existing
 
     updated = db.update("categories", category_id, update_data)
@@ -156,6 +253,10 @@ async def update_category(category_id: str, payload: schemas.CategoryUpdate):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update category"
         )
+    
+    # Ensure image URL is viewable
+    if updated.get("image_url"):
+        updated["image_url"] = get_viewable_image_url(updated["image_url"])
         
     return updated
 
@@ -203,7 +304,14 @@ async def list_active_categories(
         return query.range(skip, skip + limit - 1).order("name_en")
 
     result = db.query("categories", query_func)
-    return result.data if result.data else []
+    categories = result.data if result.data else []
+    
+    # Ensure all image URLs are viewable for e-commerce display
+    for category in categories:
+        if category.get("image_url"):
+            category["image_url"] = get_viewable_image_url(category["image_url"])
+    
+    return categories
 
 
 @user_router.get("/{category_id}/is-leaf")

@@ -12,3 +12,4 @@ python-jose[cryptography]==3.3.0
 deep-translator==1.11.4
 passlib[bcrypt]
 bcrypt==4.0.1
+boto3>=1.34.0

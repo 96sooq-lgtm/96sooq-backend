@@ -39,7 +39,8 @@ class ChangePasswordRequest(BaseModel):
 
 # Category schemas
 class CategoryCreate(BaseModel):
-	name: str
+	name_en: str
+	name_ar: str
 	image_url: Optional[str] = None
 	parent_id: Optional[str] = None
 	attributes_schema: Optional[list | dict] = None
@@ -47,7 +48,8 @@ class CategoryCreate(BaseModel):
 
 
 class CategoryUpdate(BaseModel):
-	name: Optional[str] = None
+	name_en: Optional[str] = None
+	name_ar: Optional[str] = None
 	image_url: Optional[str] = None
 	parent_id: Optional[str] = None
 	attributes_schema: Optional[list | dict] = None

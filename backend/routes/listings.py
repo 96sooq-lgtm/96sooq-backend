@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, status, Depends, Query
 from models import schemas
 from db.supabase_client import db
 from utils.auth import get_current_customer, get_current_admin
+from utils.storage import s3_client
 from typing import List, Optional
 
 # Public/User Router
@@ -25,6 +26,42 @@ def is_leaf_category(category_id: str) -> bool:
     """Check if a category is a leaf node."""
     children = db.select("categories", filters={"parent_id": category_id})
     return not bool(children)
+
+def get_viewable_image_url(image_url_or_path: Optional[str]) -> Optional[str]:
+    """
+    Convert image URL or file path to a viewable URL.
+    - If it's already a full URL (http/https), return as-is
+    - If it's a file_path (starts with folder name), generate presigned URL
+    """
+    if not image_url_or_path:
+        return None
+    
+    # If it's already a full URL, return as-is
+    if image_url_or_path.startswith(('http://', 'https://')):
+        return image_url_or_path
+    
+    # If it's a file_path, generate presigned URL for viewing
+    if s3_client:
+        presigned_url = s3_client.generate_presigned_url(image_url_or_path, expiration=3600)
+        return presigned_url if presigned_url else image_url_or_path
+    
+    return image_url_or_path
+
+def get_listing_images(listing_id: str) -> List[dict]:
+    """Fetch listing images and make URLs viewable."""
+    images = db.select("listing_images", filters={"listing_id": listing_id})
+    if not images:
+        return []
+    
+    # Sort by display_order
+    images = sorted(images, key=lambda x: x.get("display_order", 0))
+    
+    # Make all image URLs viewable
+    for img in images:
+        if img.get("image_url"):
+            img["image_url"] = get_viewable_image_url(img["image_url"])
+    
+    return images
 
 # -------------------------------------------------
 # PUBLIC / CUSTOMER ENDPOINTS
@@ -144,7 +181,13 @@ async def list_listings(
         return query.range(skip, skip + limit - 1).order("created_at", desc=True)
 
     result = db.query("listings", query_func)
-    return result.data if result.data else []
+    listings = result.data if result.data else []
+    
+    # Add viewable images to each listing for e-commerce display
+    for listing in listings:
+        listing["images"] = get_listing_images(listing["id"])
+    
+    return listings
 
 
 @router.get("/{listing_id}", response_model=schemas.ListingOut)
@@ -152,6 +195,10 @@ async def get_listing(listing_id: str):
     listing = db.select_one("listings", listing_id)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
+    
+    # Add viewable images for e-commerce display
+    listing["images"] = get_listing_images(listing_id)
+    
     return listing
 
 
@@ -205,7 +252,13 @@ async def list_all_listings_admin(
         return query.range(skip, skip + limit - 1).order("created_at", desc=True)
 
     result = db.query("listings", query_func)
-    return result.data if result.data else []
+    listings = result.data if result.data else []
+    
+    # Add viewable images to each listing for e-commerce display
+    for listing in listings:
+        listing["images"] = get_listing_images(listing["id"])
+    
+    return listings
 
 
 @admin_router.put("/{listing_id}/approve")
