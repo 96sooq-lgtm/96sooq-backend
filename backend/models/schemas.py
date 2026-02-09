@@ -99,9 +99,10 @@ class CustomerOut(BaseModel):
 class PricingPlanCreate(BaseModel):
     name_en: str
     name_ar: str
-    type: str # listing, store, banner
+    type: str # listing, ad, offer
     price: float
     duration_days: int
+    description: Optional[str] = None
     features: Optional[dict] = {}
     is_active: bool = True
 

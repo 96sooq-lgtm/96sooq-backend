@@ -304,6 +304,88 @@
             "description": "All authentication methods"
         },
         {
+            "name": "1.5 Storage (Uploads)",
+            "item": [
+                {
+                    "name": "Upload File (Proxy)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "file",
+                                    "type": "file",
+                                    "src": []
+                                },
+                                {
+                                    "key": "folder",
+                                    "value": "uploads",
+                                    "type": "text"
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/storage/upload",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "storage",
+                                "upload"
+                            ]
+                        },
+                        "description": "Upload a file via backend proxy. Returns a public URL."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Presigned Upload URL (Direct S3)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"file_name\": \"test-image.jpg\",\n  \"file_type\": \"image/jpeg\",\n  \"folder\": \"uploads\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/storage/presigned-url/upload",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "storage",
+                                "presigned-url",
+                                "upload"
+                            ]
+                        },
+                        "description": "Get a presigned URL to upload directly to S3 from frontend."
+                    },
+                    "response": []
+                }
+            ],
+            "description": "File upload and retrieval endpoints"
+        },
+        {
             "name": "2. Categories",
             "item": [
                 {

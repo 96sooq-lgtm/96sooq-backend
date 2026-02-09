@@ -27,7 +27,15 @@ This Postman collection provides complete end-to-end API testing for the 96sooq 
 ### 4. Listings
 - ✅ **User** - Create (free/paid), list, search, update
 - ✅ **Admin** - Approve/reject listings
+- ✅ **Admin** - Approve/reject listings
 - ✅ **Payment Flow** - First free, 2nd+ requires plan_id
+- ✅ **Status Updates** - User can mark as sold/expired
+
+### 5. New Features (Reviews, Chat, Ads)
+- ✅ **Reviews** - Rate and review stores
+- ✅ **Chat** - Real-time negotiation (Conversations & Messages)
+- ✅ **Ads** - Create and list banner ads
+- ✅ **Plans** - Admin management of pricing plans
 
 ---
 
@@ -122,6 +130,24 @@ Run requests in this order for best results:
         ├── List All Listings (Any Status)
         ├── Approve Listing ⭐
         └── Reject Listing
+
+├── 5. Reviews
+│   ├── Create Store Review
+│   └── List Store Reviews
+│
+├── 6. Chat
+│   ├── Start Conversation
+│   ├── List My Conversations
+│   ├── Send Message
+│   └── Get Messages
+│
+├── 7. Ads (Banners)
+│   ├── Create Ad
+│   └── List Active Ads
+│
+└── 8. Pricing Plans
+    ├── Create Plan (Admin)
+    └── List Plans
 ```
 
 ⭐ = Key endpoints with special features
