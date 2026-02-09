@@ -146,6 +146,61 @@ async def create_category(payload: schemas.CategoryCreate):
     
     return category
 
+@admin_router.get("/list", response_model=list[schemas.CategoryOut])
+async def list_root_categories(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500)
+):
+    """
+    Returns only ROOT categories (parent_id is null)
+    """
+    def query_func(table):
+        return table.select("*")\
+            .eq("is_active", True)\
+            .is_("parent_id", "null")\
+            .range(skip, skip + limit - 1)\
+            .order("name_en")
+
+    result = db.query("categories", query_func)
+    categories = result.data if result.data else []
+
+    for category in categories:
+        if category.get("image_url"):
+            category["image_url"] = get_viewable_image_url(category["image_url"])
+
+    return categories
+
+@admin_router.get("/subcategories", response_model=list[schemas.CategoryOut])
+async def list_all_subcategories(
+    parent_id: Optional[str] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500)
+):
+    """
+    Returns only subcategories
+    - If parent_id is given → returns subcategories of that parent
+    - If not → returns ALL subcategories
+    """
+    def query_func(table):
+        query = table.select("*").eq("is_active", True)
+
+        # Only records where parent_id is NOT null
+        query = query.not_.is_("parent_id", "null")
+
+        if parent_id:
+            query = query.eq("parent_id", parent_id)
+
+        return query.range(skip, skip + limit - 1).order("name_en")
+
+    result = db.query("categories", query_func)
+    subcategories = result.data if result.data else []
+
+    for category in subcategories:
+        if category.get("image_url"):
+            category["image_url"] = get_viewable_image_url(category["image_url"])
+
+    return subcategories
+
 
 @admin_router.get("/", response_model=list[schemas.CategoryOut])
 async def list_categories_admin(
@@ -320,3 +375,58 @@ async def check_category_is_leaf(category_id: str):
     children = db.select("categories", filters={"parent_id": category_id})
     return {"is_leaf": not bool(children), "id": category_id}
 
+
+@admin_router.get("/list", response_model=list[schemas.CategoryOut])
+async def list_root_categories(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500)
+):
+    """
+    Returns only ROOT categories (parent_id is null)
+    """
+    def query_func(table):
+        return table.select("*")\
+            .eq("is_active", True)\
+            .is_("parent_id", "null")\
+            .range(skip, skip + limit - 1)\
+            .order("name_en")
+
+    result = db.query("categories", query_func)
+    categories = result.data if result.data else []
+
+    for category in categories:
+        if category.get("image_url"):
+            category["image_url"] = get_viewable_image_url(category["image_url"])
+
+    return categories
+
+@admin_router.get("/subcategories", response_model=list[schemas.CategoryOut])
+async def list_all_subcategories(
+    parent_id: Optional[str] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=500)
+):
+    """
+    Returns only subcategories
+    - If parent_id is given → returns subcategories of that parent
+    - If not → returns ALL subcategories
+    """
+    def query_func(table):
+        query = table.select("*").eq("is_active", True)
+
+        # Only records where parent_id is NOT null
+        query = query.not_.is_("parent_id", "null")
+
+        if parent_id:
+            query = query.eq("parent_id", parent_id)
+
+        return query.range(skip, skip + limit - 1).order("name_en")
+
+    result = db.query("categories", query_func)
+    subcategories = result.data if result.data else []
+
+    for category in subcategories:
+        if category.get("image_url"):
+            category["image_url"] = get_viewable_image_url(category["image_url"])
+
+    return subcategories
