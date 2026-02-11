@@ -172,4 +172,35 @@ class ListingOut(BaseModel):
     attributes_values: Optional[dict] = None
     location: Optional[dict] = None
     created_at: Optional[str] = None
-    # We might fetch images separately or include them here
+# Ad Banners
+class AdBannerCreate(BaseModel):
+    user_id: str
+    name: str
+    description: Optional[str] = None
+    type: str # carousel, product_listing, top_offers, chat_screen
+    image_url: str
+    link_url: Optional[str] = None
+    plan_id: Optional[str] = None
+
+class AdBannerUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    type: Optional[str] = None
+    image_url: Optional[str] = None
+    link_url: Optional[str] = None
+    status: Optional[str] = None # pending_payment, pending_approval, active, rejected, expired
+
+class AdBannerOut(BaseModel):
+    id: str
+    user_id: str
+    name: str
+    description: Optional[str] = None
+    type: Optional[str] = None
+    image_url: str
+    link_url: Optional[str] = None
+    status: str
+    plan_id: Optional[str] = None
+    clicks: int = 0
+    expires_at: Optional[datetime] = None
+    created_at: Optional[str] = None
+

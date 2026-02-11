@@ -15,6 +15,8 @@ from routes.listings import admin_router as admin_listings_router
 from routes.storage import router as storage_router
 from routes.subscriptions import admin_router as admin_subscriptions_router
 from routes.subscriptions import user_router as user_subscriptions_router
+from routes.banners import router as banners_router
+from routes.banners import admin_router as admin_banners_router
 
 # Load settings
 settings = Settings()
@@ -58,6 +60,8 @@ app.include_router(admin_listings_router)
 app.include_router(storage_router)
 app.include_router(admin_subscriptions_router)
 app.include_router(user_subscriptions_router)
+app.include_router(banners_router)
+app.include_router(admin_banners_router)
 
 
 @app.get("/")

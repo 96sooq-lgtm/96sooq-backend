@@ -1263,6 +1263,267 @@
                 }
             ],
             "description": "Listing management (Free first listing + Payment)"
+        },
+        {
+            "name": "6. Ad Banners",
+            "item": [
+                {
+                    "name": "User - Ad Banners",
+                    "item": [
+                        {
+                            "name": "Create Banner Draft",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"user_id\": \"USER_ID_HERE\",\n  \"name\": \"Summer Sale Banner\",\n  \"description\": \"Promote summer collection\",\n  \"type\": \"carousel\",\n  \"image_url\": \"https://cdn.example.com/banner.jpg\",\n  \"link_url\": \"https://example.com/summer-sale\"\n}"
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/banners/",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "banners",
+                                        ""
+                                    ]
+                                },
+                                "description": "Create a banner draft. Status: pending_payment. No auth required."
+                            }
+                        },
+                        {
+                            "name": "Pay for Banner",
+                            "request": {
+                                "method": "PUT",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/banners/{{banner_id}}/pay?plan_id={{plan_id}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "banners",
+                                        "{{banner_id}}",
+                                        "pay"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "plan_id",
+                                            "value": "{{plan_id}}"
+                                        }
+                                    ]
+                                },
+                                "description": "Simulate payment. Status: pending_approval. No auth required."
+                            }
+                        },
+                        {
+                            "name": "List My Banners",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/banners/my-banners?user_id=USER_ID_HERE",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "banners",
+                                        "my-banners"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "user_id",
+                                            "value": "USER_ID_HERE"
+                                        }
+                                    ]
+                                },
+                                "description": "List logged-in user's banners. No auth required."
+                            }
+                        },
+                        {
+                            "name": "Public - List Active Banners",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{base_url}}/api/banners/public?type=carousel",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "banners",
+                                        "public"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "type",
+                                            "value": "carousel"
+                                        }
+                                    ]
+                                },
+                                "description": "List active banners for display"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Admin - Ad Banners",
+                    "item": [
+                        {
+                            "name": "Create Banner (Admin)",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"user_id\": \"USER_ID_HERE\",\n  \"name\": \"System Banner\",\n  \"description\": \"Admin created banner\",\n  \"type\": \"top_offers\",\n  \"image_url\": \"https://cdn.example.com/system-banner.jpg\",\n  \"link_url\": \"https://example.com/promo\"\n}"
+                                },
+                                "url": {
+                                    "raw": "{{base_url}}/api/admin/banners/",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "admin",
+                                        "banners",
+                                        ""
+                                    ]
+                                },
+                                "description": "Admin creates banner directly. Status: active."
+                            }
+                        },
+                        {
+                            "name": "List All Banners",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/api/admin/banners/?status=pending_approval",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "admin",
+                                        "banners",
+                                        ""
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "status",
+                                            "value": "pending_approval"
+                                        }
+                                    ]
+                                },
+                                "description": "List banners with filters (admin)"
+                            }
+                        },
+                        {
+                            "name": "Approve Banner",
+                            "request": {
+                                "method": "PUT",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/api/admin/banners/{{banner_id}}/approve",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "admin",
+                                        "banners",
+                                        "{{banner_id}}",
+                                        "approve"
+                                    ]
+                                },
+                                "description": "Approve banner. Sets expires_at based on plan."
+                            }
+                        },
+                        {
+                            "name": "Reject Banner",
+                            "request": {
+                                "method": "PUT",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/api/admin/banners/{{banner_id}}/reject",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "admin",
+                                        "banners",
+                                        "{{banner_id}}",
+                                        "reject"
+                                    ]
+                                },
+                                "description": "Reject banner."
+                            }
+                        },
+                        {
+                            "name": "Delete Banner",
+                            "request": {
+                                "method": "DELETE",
+                                "header": [
+                                    {
+                                        "key": "Authorization",
+                                        "value": "Bearer {{admin_token}}"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/api/admin/banners/{{banner_id}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "admin",
+                                        "banners",
+                                        "{{banner_id}}"
+                                    ]
+                                },
+                                "description": "Delete banner"
+                            }
+                        }
+                    ]
+                }
+            ],
+            "description": "Ad Banners Management"
         }
     ],
     "variable": [
