@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, Query
 from typing import List, Optional
 from models.schemas import PricingPlanCreate, PricingPlanOut
 from db.supabase_client import db
@@ -45,15 +45,19 @@ async def create_subscription_plan(plan: PricingPlanCreate, admin: dict = Depend
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 @admin_router.get("/", response_model=List[PricingPlanOut])
-async def list_subscription_plans(admin: dict = Depends(get_current_admin)):
+async def list_subscription_plans(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    admin: dict = Depends(get_current_admin)
+):
     """
-    List all subscription plans (Admin only)
+    List all subscription plans (Admin only) with pagination.
     """
-    try:
-        plans = db.select("pricing_plans")
-        return plans
-    except Exception as e:
-         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    def query_func(table):
+        return table.select("*").range(skip, skip + limit - 1).order("created_at", desc=True)
+
+    result = db.query("pricing_plans", query_func)
+    return result.data if result.data else []
 
 @admin_router.delete("/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_subscription_plan(plan_id: str, admin: dict = Depends(get_current_admin)):
