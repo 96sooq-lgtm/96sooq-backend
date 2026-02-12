@@ -22,32 +22,53 @@ admin_router = APIRouter(
 # PUBLIC / CUSTOMER ENDPOINTS
 # -------------------------------------------------
 
-@router.post("/", response_model=schemas.AdBannerOut, status_code=status.HTTP_201_CREATED)
-async def create_banner(
+@router.post("/boost", response_model=schemas.AdBannerOut, status_code=status.HTTP_201_CREATED)
+async def boost_listing(
     payload: schemas.AdBannerCreate
 ):
     """
-    Step 1: User creates a banner draft.
-    Status starts as 'pending_payment'.
+    Step 1: User boosts a listing.
+    - Requires listing_id
+    - If listing is Active -> Boost is Active (after payment? Or free if admin?)
+      Wait, user said "admin can add any ad type... without price". User pays.
+      If user pays -> status pending_approval?
+      User said: "if the product is already listing ... no need of approval since its already aproved product"
+      So:
+      - Active Listing -> Active Boost (after payment mock)
+      - Pending Listing -> Pending Approval Boost
     """
     data = payload.dict()
-    # user_id is now in payload
-    data["status"] = "pending_payment"
     
-    # If plan_id is provided during creation, we might skip to pending_approval if payment is handled check
-    # But usually creation is step 1.
-    if data.get("plan_id"):
-        # Verify plan exists
-        plan = db.select_one("pricing_plans", data["plan_id"])
-        if not plan:
-             raise HTTPException(status_code=400, detail="Invalid plan_id")
-             
-        # Simulate payment success for now
-        data["status"] = "pending_approval"
+    if not data.get("listing_id"):
+        raise HTTPException(status_code=400, detail="Listing ID is required for boosting")
+        
+    # Verify listing
+    listing = db.select_one("listings", data["listing_id"])
+    if not listing:
+         raise HTTPException(status_code=404, detail="Listing not found")
+         
+    # Verify ownership? (Optional, but good practice. Payload has user_id)
+    if listing["user_id"] != data["user_id"]:
+        # Allow admin? No, this is user endpoint.
+        raise HTTPException(status_code=403, detail="Cannot boost listing you do not own")
+
+    # Determine status
+    if listing["status"] == "active":
+        data["status"] = "active" # Auto-approve boost
+        # Calculate expiration immediately if payment "succeeded" (mocked here)
+        if data.get("plan_id"):
+            plan = db.select_one("pricing_plans", data["plan_id"])
+            if plan:
+                duration = plan.get("duration_days", 7)
+                data["expires_at"] = (datetime.utcnow() + timedelta(days=duration)).isoformat()
+    else:
+        # Listing is pending or rejected (if rejected, should we allow boost? probably not, but let's stick to pending)
+        data["status"] = "pending_approval" # Waits for admin to approve listing
     
+    # Insert banner
     banner = db.insert("ad_banners", data)
     if not banner:
-        raise HTTPException(status_code=500, detail="Failed to create banner")
+        raise HTTPException(status_code=500, detail="Failed to create boost")
         
     return banner
 
@@ -125,10 +146,9 @@ async def create_banner_admin(
 ):
     """
     Admin: Create a banner directly (status=active).
+    Can be standalone or boost.
     """
     data = payload.dict()
-    # Ensure user_id is set (payload has it, or we could override with admin's ID if payload.user_id is generic)
-    # Since payload.user_id is required, we use it.
     
     data["status"] = "active"
     

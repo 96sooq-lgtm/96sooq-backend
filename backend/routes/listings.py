@@ -97,7 +97,16 @@ async def create_listing(
     
     is_first_listing = listing_count == 0
     
-    # 3. Enforce payment rule
+    # 3. Verify Location if provided
+    if payload.location_id:
+        location = db.select_one("locations", payload.location_id)
+        if not location:
+             raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid location_id"
+            )
+            
+    # 4. Enforce payment rule
     if not is_first_listing:
         # Not first listing - payment required
         if not payload.plan_id:
@@ -162,6 +171,7 @@ async def list_listings(
     limit: int = Query(20, ge=1, le=100),
     category_id: Optional[str] = None,
     store_id: Optional[str] = None,
+    location_id: Optional[str] = None,
     search: Optional[str] = None
 ):
     """
@@ -174,6 +184,8 @@ async def list_listings(
             query = query.eq("category_id", category_id)
         if store_id:
             query = query.eq("store_id", store_id)
+        if location_id:
+            query = query.eq("location_id", location_id)
         if search:
             # Supabase/PostgREST text search (simple ilike for title)
             query = query.ilike("title", f"%{search}%")
@@ -183,10 +195,15 @@ async def list_listings(
     result = db.query("listings", query_func)
     listings = result.data if result.data else []
     
-    # Add viewable images to each listing for e-commerce display
+    # Add viewable images and location details
     for listing in listings:
         listing["images"] = get_listing_images(listing["id"])
-    
+        
+        if listing.get("location_id"):
+            loc = db.select_one("locations", listing["location_id"])
+            if loc:
+                listing["location_details"] = loc
+
     return listings
 
 
@@ -198,6 +215,11 @@ async def get_listing(listing_id: str):
     
     # Add viewable images for e-commerce display
     listing["images"] = get_listing_images(listing_id)
+    
+    if listing.get("location_id"):
+        loc = db.select_one("locations", listing["location_id"])
+        if loc:
+             listing["location_details"] = loc
     
     return listing
 
@@ -217,9 +239,21 @@ async def update_listing(
         raise HTTPException(status_code=403, detail="Not authorized to update this listing")
         
     update_data = payload.dict(exclude_unset=True)
-    # Block status update
+    # Block status update from user
     if "status" in update_data:
         del update_data["status"]
+        
+    # Security/Loophole Fix:
+    # If user edits an active listing (title, description, price, images, attributes),
+    # we must revert status to 'pending_approval' to prevent content swapping.
+    # Exception: Maybe location or minor fields? But generally safer to re-approve.
+    
+    # Check if any sensitive fields are being updated
+    sensitive_fields = ["title", "description", "price", "images", "attributes_values", "category_id"]
+    is_sensitive_update = any(field in update_data for field in sensitive_fields)
+    
+    if is_sensitive_update and listing["status"] == "active":
+        update_data["status"] = "pending_approval"
         
     updated = db.update("listings", listing_id, update_data)
     if not updated:

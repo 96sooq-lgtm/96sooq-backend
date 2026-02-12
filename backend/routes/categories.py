@@ -158,6 +158,9 @@ async def list_root_categories(
     def query_func(table):
         query = table.select("*").is_("parent_id", "null")
         
+        # Filter out deleted categories
+        query = query.eq("is_deleted", False)
+        
         if is_active is not None:
             query = query.eq("is_active", is_active)
             
@@ -189,6 +192,9 @@ async def list_all_subcategories(
 
         # Only records where parent_id is NOT null
         query = query.not_.is_("parent_id", "null")
+        
+        # Filter out deleted categories
+        query = query.eq("is_deleted", False)
 
         if parent_id:
             query = query.eq("parent_id", parent_id)
@@ -332,8 +338,15 @@ async def delete_category(category_id: str):
             detail="Category not found"
         )
 
-    success = db.delete("categories", category_id)
-    if not success:
+    # Soft delete: Update is_deleted = True
+    updated = db.update("categories", category_id, {"is_deleted": True})
+    if not updated:
+        # If update returns None, it might mean the ID doesn't exist (though we checked) or DB error
+        # Re-check existence to be sure
+        check = db.select_one("categories", category_id)
+        if not check:
+             raise HTTPException(status_code=404, detail="Category not found")
+             
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete category"
@@ -353,8 +366,8 @@ async def list_active_categories(
     limit: int = Query(100, ge=1, le=500)
 ):
     def query_func(table):
-        # Filter for active categories only
-        query = table.select("*").eq("is_active", True)
+        # Filter for active categories only and not deleted
+        query = table.select("*").eq("is_active", True).eq("is_deleted", False)
         
         if parent_id:
             query = query.eq("parent_id", parent_id)

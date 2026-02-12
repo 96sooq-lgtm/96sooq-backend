@@ -17,6 +17,7 @@ from routes.subscriptions import admin_router as admin_subscriptions_router
 from routes.subscriptions import user_router as user_subscriptions_router
 from routes.banners import router as banners_router
 from routes.banners import admin_router as admin_banners_router
+from routes.locations import router as locations_router
 
 # Load settings
 settings = Settings()
@@ -51,8 +52,8 @@ app.include_router(health.router)
 app.include_router(admin_router)
 app.include_router(auth_router)
 app.include_router(category_admin_router)
-app.include_router(category_admin_router)
 app.include_router(category_user_router)
+app.include_router(locations_router)
 app.include_router(stores_router)
 app.include_router(admin_stores_router)
 app.include_router(listings_router)

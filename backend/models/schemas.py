@@ -102,6 +102,11 @@ class PricingPlanCreate(BaseModel):
     type: str # listing, ad, offer
     price: float
     duration_days: int
+    quota: int = 0 # 0 means unlimited? Or use -1? Let's say 0 is valid for ad/offer without quantity limit? 
+    # Actually, for listings: 1 free, 5 paid. For store: unlimited.
+    # Let's say: quota is the number of listings allowed per month.
+    # If -1, unlimited.
+    target_audience: str = "individual" # individual, store
     description: Optional[str] = None
     features: Optional[dict] = {}
     is_active: bool = True
@@ -147,7 +152,7 @@ class ListingCreate(BaseModel):
     currency: str = "AED"
     plan_id: Optional[str] = None
     attributes_values: Optional[dict] = {}
-    location: Optional[dict] = None
+    location_id: Optional[str] = None
     images: Optional[List[str]] = [] # URLs
 
 class ListingUpdate(BaseModel):
@@ -155,7 +160,7 @@ class ListingUpdate(BaseModel):
     description: Optional[str] = None
     price: Optional[float] = None
     attributes_values: Optional[dict] = None
-    location: Optional[dict] = None
+    location_id: Optional[str] = None
     status: Optional[str] = None
     
 class ListingOut(BaseModel):
@@ -170,16 +175,19 @@ class ListingOut(BaseModel):
     status: str
     rejection_reason: Optional[str] = None
     attributes_values: Optional[dict] = None
-    location: Optional[dict] = None
+    location_id: Optional[str] = None
+    location_details: Optional[dict] = None # Populated with location name/type
     created_at: Optional[str] = None
 # Ad Banners
 class AdBannerCreate(BaseModel):
     user_id: str
-    name: str
+    name: str # Auto-generated? Or user provided? Let's keep it.
     description: Optional[str] = None
     type: str # carousel, product_listing, top_offers, chat_screen
-    image_url: str
+    image_url: Optional[str] = None # Optional if boosting a listing (use listing image)
     link_url: Optional[str] = None
+    plan_id: Optional[str] = None
+    listing_id: Optional[str] = None # Required for boosting
     plan_id: Optional[str] = None
 
 class AdBannerUpdate(BaseModel):
@@ -196,10 +204,11 @@ class AdBannerOut(BaseModel):
     name: str
     description: Optional[str] = None
     type: Optional[str] = None
-    image_url: str
+    image_url: Optional[str] = None
     link_url: Optional[str] = None
     status: str
     plan_id: Optional[str] = None
+    listing_id: Optional[str] = None
     clicks: int = 0
     expires_at: Optional[datetime] = None
     created_at: Optional[str] = None
