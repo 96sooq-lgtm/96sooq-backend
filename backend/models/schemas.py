@@ -117,15 +117,21 @@ class PricingPlanOut(PricingPlanCreate):
 
 # Stores
 class StoreCreate(BaseModel):
-    name: str
+    name_en: str
+    name_ar: str
     description: Optional[str] = None
+    city: str # UUID for location_id
+    place: str # Specific area
     logo_url: Optional[str] = None
     cover_image_url: Optional[str] = None
-    plan_id: Optional[str] = None # Optional for initial creation if logic handles free tier
+    plan_id: str # Required for store creation
 
 class StoreUpdate(BaseModel):
-    name: Optional[str] = None
+    name_en: Optional[str] = None
+    name_ar: Optional[str] = None
     description: Optional[str] = None
+    city: Optional[str] = None
+    place: Optional[str] = None
     logo_url: Optional[str] = None
     cover_image_url: Optional[str] = None
     status: Optional[str] = None
@@ -133,8 +139,11 @@ class StoreUpdate(BaseModel):
 class StoreOut(BaseModel):
     id: str
     user_id: str
-    name: str
+    name: str # Retaining for backward compatibility or mapping
+    name_ar: Optional[str] = None
     description: Optional[str] = None
+    location_id: Optional[str] = None
+    place: Optional[str] = None
     logo_url: Optional[str] = None
     cover_image_url: Optional[str] = None
     status: str
@@ -148,19 +157,23 @@ class ListingCreate(BaseModel):
     store_id: Optional[str] = None
     title: str
     description: Optional[str] = None
+    condition: str # new, used
     price: float
     currency: str = "AED"
+    city: str # UUID for location_id
+    place: str # Specific area
     plan_id: Optional[str] = None
     attributes_values: Optional[dict] = {}
-    location_id: Optional[str] = None
     images: Optional[List[str]] = [] # URLs
 
 class ListingUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
+    condition: Optional[str] = None
     price: Optional[float] = None
+    city: Optional[str] = None
+    place: Optional[str] = None
     attributes_values: Optional[dict] = None
-    location_id: Optional[str] = None
     status: Optional[str] = None
     
 class ListingOut(BaseModel):
@@ -170,6 +183,8 @@ class ListingOut(BaseModel):
     category_id: str
     title: str
     description: Optional[str] = None
+    condition: Optional[str] = None
+    place: Optional[str] = None
     price: float
     currency: str
     status: str
@@ -213,3 +228,24 @@ class AdBannerOut(BaseModel):
     expires_at: Optional[datetime] = None
     created_at: Optional[str] = None
 
+
+# ----------------------------------------------------------------
+# SUBSCRIPTIONS (User Purchased)
+# ----------------------------------------------------------------
+class UserSubscriptionBase(BaseModel):
+    plan_id: str
+
+class UserSubscriptionCreate(UserSubscriptionBase):
+    pass
+
+class UserSubscriptionOut(UserSubscriptionBase):
+    id: str
+    user_id: str
+    start_date: datetime
+    end_date: datetime
+    remaining_quota: int
+    status: str
+    plan_details: Optional[PricingPlanOut] = None
+
+    class Config:
+        orm_mode = True

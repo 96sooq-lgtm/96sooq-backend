@@ -132,6 +132,22 @@ async def oauth_complete_profile(payload: OAuthCompleteProfileRequest):
             detail="User already exists. Please use check-user endpoint."
         )
     
+    # Check if phone number is already taken
+    existing_phone = db.select("app_users", filters={"phone_number": payload.phone_number})
+    if existing_phone:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mobile number already exists"
+        )
+
+    # Check if email is already taken (to avoid 500 duplicate key error)
+    existing_email = db.select("app_users", filters={"email": payload.email})
+    if existing_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already exists"
+        )
+    
     # Create new user
     new_user_data = {
         "provider": provider,

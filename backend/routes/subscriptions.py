@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, status, Query
 from typing import List, Optional
+from models import schemas
 from models.schemas import PricingPlanCreate, PricingPlanOut
 from db.supabase_client import db
 from utils.auth import get_current_admin
@@ -147,6 +148,67 @@ async def delete_subscription_plan(plan_id: str, admin: dict = Depends(get_curre
     success = db.delete("pricing_plans", plan_id)
     if not success:
          raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to delete plan")
+
+# ----------------------------------------------------------------
+# USER SUBSCRIPTION ENDPOINTS (Manage Purchases)
+# ----------------------------------------------------------------
+
+@user_router.post("/purchase", response_model=schemas.UserSubscriptionOut)
+async def purchase_subscription(
+    payload: schemas.UserSubscriptionCreate,
+    current_user: dict = Depends(get_current_customer)
+):
+    """
+    Purchase a subscription plan.
+    - Sets remaining_quota based on plan.
+    - Sets end_date based on plan duration.
+    """
+    plan = db.select_one("pricing_plans", payload.plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+        
+    duration_days = plan.get("duration_days", 30)
+    quota = plan.get("quota", 0) # -1 for unlimited
+    
+    # Calculate dates
+    start_date = datetime.utcnow()
+    end_date = start_date + timedelta(days=duration_days)
+    
+    # Create subscription
+    sub_data = {
+        "user_id": current_user["id"],
+        "plan_id": payload.plan_id,
+        "start_date": start_date.isoformat(),
+        "end_date": end_date.isoformat(),
+        "remaining_quota": quota,
+        "status": "active"
+    }
+    
+    subscription = db.insert("user_subscriptions", sub_data)
+    if not subscription:
+        raise HTTPException(status_code=500, detail="Failed to create subscription")
+        
+    # Attach plan details for response
+    subscription["plan_details"] = plan
+    return subscription
+
+@user_router.get("/my-subscription", response_model=List[schemas.UserSubscriptionOut])
+async def get_my_subscriptions(
+    current_user: dict = Depends(get_current_customer)
+):
+    """
+    Get all subscriptions for the current user.
+    """
+    subs = db.select("user_subscriptions", filters={"user_id": current_user["id"]})
+    
+    # Enrich with plan details
+    for sub in subs:
+        plan = db.select_one("pricing_plans", sub["plan_id"])
+        if plan:
+            sub["plan_details"] = plan
+            
+    return subs if subs else []
+
 
 # ----------------------------------------------------------------
 # USER ENDPOINTS

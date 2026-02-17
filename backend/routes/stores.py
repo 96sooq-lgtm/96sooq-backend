@@ -38,12 +38,26 @@ async def create_store(
     # Logic: "for a user first store is free if sae user wnated to create mulitple store there will be a rpice"
     # We will just allow creation for now.
     
+    # Validate City (Location)
+    if payload.city:
+        location = db.select_one("locations", payload.city)
+        if not location:
+            raise HTTPException(status_code=400, detail="Invalid city (location_id)")
+
     data = payload.dict()
     data["user_id"] = user_id
+    
+    # Map name_en to name in DB, city to location_id
+    data["name"] = payload.name_en
+    data["location_id"] = payload.city
+    
+    # Remove fields not in DB or mapped
+    if "city" in data: del data["city"]
+    if "name_en" in data: del data["name_en"]
+    
     data["status"] = "active" # Auto-approve stores as per new requirement
     
-    # If no plan provided, maybe assign a default free plan if exists?
-    # Keeping it simple for MVP.
+    # Store name_ar and place are already in data and DB (via migration)
 
     store = db.insert("stores", data)
     if not store:

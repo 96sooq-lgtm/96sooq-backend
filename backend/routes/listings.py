@@ -4,6 +4,7 @@ from db.supabase_client import db
 from utils.auth import get_current_customer, get_current_admin
 from utils.storage import s3_client
 from typing import List, Optional
+from datetime import datetime
 
 # Public/User Router
 router = APIRouter(
@@ -91,59 +92,84 @@ async def create_listing(
             detail="Listings can only be added to leaf categories"
         )
     
-    # 2. Check if this is user's first listing
-    user_listings = db.select("listings", filters={"user_id": user_id})
-    listing_count = len(user_listings) if user_listings else 0
+    # 2. Check if user is a Store User
+    user_stores = db.select("stores", filters={"user_id": user_id, "status": "active"})
+    is_store_user = len(user_stores) > 0
+    store_id = user_stores[0]["id"] if is_store_user else None
     
-    is_first_listing = listing_count == 0
-    
-    # 3. Verify Location if provided
-    if payload.location_id:
-        location = db.select_one("locations", payload.location_id)
+    # 3. Verify Location (City)
+    location_id = payload.city
+    if location_id:
+        location = db.select_one("locations", location_id)
         if not location:
              raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid location_id"
+                detail="Invalid city (location_id)"
             )
+
+    # 4. Verify Condition
+    if payload.condition not in ['new', 'used']:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Condition must be 'new' or 'used'"
+        )
+
+    # 4. Enforce payment/quota rule (For Individual Users Only)
+    # Store users follow Store Plan limits (Not implemented in detail here, assumed unlimited or managed elsewhere)
+    if not is_store_user:
+        # Check if this is user's first listing (Individual)
+        user_listings = db.select("listings", filters={"user_id": user_id, "store_id": None})
+        listing_count = len(user_listings) if user_listings else 0
+        is_first_listing = listing_count == 0
+        
+        if not is_first_listing:
+            # Check for active subscription
+            # ... (Same logic as before)
+            now = datetime.utcnow().isoformat()
+            subs = db.select("user_subscriptions", filters={
+                "user_id": user_id,
+                "status": "active"
+            })
             
-    # 4. Enforce payment rule
-    if not is_first_listing:
-        # Not first listing - payment required
-        if not payload.plan_id:
-            raise HTTPException(
-                status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                detail="Payment required. This is not your first listing. Please select a pricing plan."
-            )
-        
-        # Verify plan exists and is active
-        plan = db.select_one("pricing_plans", payload.plan_id)
-        if not plan:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Pricing plan not found"
-            )
-        
-        if not plan.get("is_active", False):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Selected pricing plan is not active"
-            )
-        
-        # TODO: Here you would integrate payment gateway
-        # For now, we assume payment is successful if plan_id is provided
-    else:
-        # First listing is free - no plan needed
-        pass
+            valid_sub = None
+            for sub in subs:
+                # Check expiry
+                if sub["end_date"] > now:
+                    # Check quota
+                    q = sub.get("remaining_quota", 0)
+                    if q == -1 or q > 0:
+                        valid_sub = sub
+                        break
+            
+            if not valid_sub:
+                 raise HTTPException(
+                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
+                    detail="No active subscription found. Please purchase a plan to create more listings."
+                )
+                
+            # Deduct quota if not unlimited
+            if valid_sub["remaining_quota"] != -1:
+                new_quota = valid_sub["remaining_quota"] - 1
+                db.update("user_subscriptions", valid_sub["id"], {"remaining_quota": new_quota})
     
-    # 4. Prepare Data
-    data = payload.dict(exclude={"images"})
+    # 5. Prepare Data
+    data = payload.dict(exclude={"images", "city"}) # Exclude city from payload, mapped to location_id
     data["user_id"] = user_id
-    data["status"] = "pending_approval"  # ALL listings require admin approval
+    data["location_id"] = location_id
+    data["status"] = "pending_approval"
     
-    # If free listing, ensure plan_id is None
-    if is_first_listing and not payload.plan_id:
-        data["plan_id"] = None
-        data["plan_expires_at"] = None
+    # Force store_id if store user
+    if is_store_user:
+        data["store_id"] = store_id
+        # Plan logic for Store Listings? currently open/unlimited or bound to store plan expiry?
+        # Leaving as-is for now.
+    else:
+        # User Listing
+        data["store_id"] = None
+        # If free listing, ensure plan_id is None
+        if is_first_listing and not payload.plan_id:
+            data["plan_id"] = None
+            data["plan_expires_at"] = None
     
     # 5. Create Listing
     listing = db.insert("listings", data)
