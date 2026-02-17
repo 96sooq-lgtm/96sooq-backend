@@ -97,15 +97,32 @@ async def create_listing(
     is_store_user = len(user_stores) > 0
     store_id = user_stores[0]["id"] if is_store_user else None
     
-    # 3. Verify Location (City)
-    location_id = payload.city
+    # 3. Verify Governorate (Location)
+    location_id = payload.location_id
     if location_id:
         location = db.select_one("locations", location_id)
         if not location:
              raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid city (location_id)"
+                detail="Invalid location_id (Governorate)"
             )
+        if location.get("type") != "state":
+             raise HTTPException(status_code=400, detail="location_id must be a Governorate (State)")
+
+    # Verify Place (City)
+    place_name = None
+    if payload.place_id:
+        city = db.select_one("locations", payload.place_id)
+        if not city:
+             raise HTTPException(status_code=400, detail="Invalid place_id (City)")
+        if city.get("type") != "city":
+             raise HTTPException(status_code=400, detail="place_id must be a City (Wilayat)")
+        
+        # Check parent
+        if city.get("parent_id") != location_id:
+             raise HTTPException(status_code=400, detail="City does not belong to the selected Governorate")
+             
+        place_name = city.get("name_en")
 
     # 4. Verify Condition
     if payload.condition not in ['new', 'used']:
@@ -153,7 +170,12 @@ async def create_listing(
                 db.update("user_subscriptions", valid_sub["id"], {"remaining_quota": new_quota})
     
     # 5. Prepare Data
-    data = payload.dict(exclude={"images", "city"}) # Exclude city from payload, mapped to location_id
+    data = payload.dict(exclude={"images", "place_id"})
+    
+    # Map place name from city object
+    if place_name:
+        data["place"] = place_name
+    
     data["user_id"] = user_id
     data["location_id"] = location_id
     data["status"] = "pending_approval"

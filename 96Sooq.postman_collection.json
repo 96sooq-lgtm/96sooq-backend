@@ -514,7 +514,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"name_en\": \"Ahmed Cars\",\n  \"name_ar\": \"سيارات أحمد\",\n  \"description\": \"Best car dealer in Dubai\",\n  \"city\": \"{{location_id}}\",\n  \"place\": \"Business Bay\",\n  \"plan_id\": \"{{plan_id}}\",\n  \"logo_url\": \"https://example.com/logo.png\"\n}"
+                  "raw": "{\n  \"name_en\": \"Ahmed Cars\",\n  \"name_ar\": \"سيارات أحمد\",\n  \"description\": \"Best car dealer in Dubai\",\n  \"location_id\": \"{{gov_id}}\",\n  \"place_id\": \"{{city_id}}\",\n  \"plan_id\": \"{{plan_id}}\",\n  \"logo_url\": \"https://example.com/logo.png\"\n}"
                 },
                 "url": {
                   "raw": "{{base_url}}/api/stores/",
@@ -624,7 +624,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"name_en\": \"Ahmed Cars Updated\",\n  \"name_ar\": \"سيارات أحمد - محدث\",\n  \"description\": \"Updated description - Best cars in UAE!\",\n  \"city\": \"{{location_id}}\",\n  \"place\": \"Deira\"\n}"
+                  "raw": "{\n  \"name_en\": \"Ahmed Cars Updated\",\n  \"name_ar\": \"سيارات أحمد - محدث\",\n  \"description\": \"Updated description - Best cars in UAE!\",\n  \"location_id\": \"{{gov_id}}\",\n  \"place_id\": \"{{city_id}}\"\n}"
                 },
                 "url": {
                   "raw": "{{base_url}}/api/stores/:id",
@@ -784,7 +784,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"title\": \"Toyota Land Cruiser\",\n  \"description\": \"Like new condition\",\n  \"condition\": \"used\",\n  \"price\": 18000,\n  \"category_id\": \"{{category_id}}\",\n  \"city\": \"{{location_id}}\",\n  \"place\": \"Jumeirah\",\n  \"images\": [\"http://example.com/img1.jpg\"],\n  \"attributes_values\": {\"Color\": \"White\", \"Year\": \"2023\"}\n}"
+                  "raw": "{\n  \"title\": \"Toyota Land Cruiser\",\n  \"description\": \"Like new condition\",\n  \"condition\": \"used\",\n  \"price\": 18000,\n  \"category_id\": \"{{category_id}}\",\n  \"location_id\": \"{{gov_id}}\",\n  \"place_id\": \"{{city_id}}\",\n  \"images\": [\"http://example.com/img1.jpg\"],\n  \"attributes_values\": {\"Color\": \"White\", \"Year\": \"2023\"}\n}"
                 },
                 "url": {
                   "raw": "{{base_url}}/api/listings/",
@@ -817,7 +817,7 @@
                 ],
                 "body": {
                   "mode": "raw",
-                  "raw": "{\n  \"category_id\": \"{{category_id}}\",\n  \"title\": \"Honda Civic 2019 - Like New\",\n  \"description\": \"Low mileage, excellent condition\",\n  \"condition\": \"used\",\n  \"price\": 65000,\n  \"currency\": \"AED\",\n  \"city\": \"{{location_id}}\",\n  \"place\": \"Dubai Marina\",\n  \"attributes_values\": {\n    \"fuel_type\": \"Petrol\",\n    \"year\": 2019,\n    \"transmission\": \"Automatic\",\n    \"mileage\": 25000\n  },\n  \"images\": [\n    \"https://cdn.example.com/honda1.jpg\"\n  ]\n}"
+                  "raw": "{\n  \"category_id\": \"{{category_id}}\",\n  \"title\": \"Honda Civic 2019 - Like New\",\n  \"description\": \"Low mileage, excellent condition\",\n  \"condition\": \"used\",\n  \"price\": 65000,\n  \"currency\": \"AED\",\n  \"location_id\": \"{{gov_id}}\",\n  \"place_id\": \"{{city_id}}\",\n  \"attributes_values\": {\n    \"fuel_type\": \"Petrol\",\n    \"year\": 2019,\n    \"transmission\": \"Automatic\",\n    \"mileage\": 25000\n  },\n  \"images\": [\n    \"https://cdn.example.com/honda1.jpg\"\n  ]\n}"
                 },
                 "url": {
                   "raw": "{{base_url}}/api/listings/",
@@ -1581,7 +1581,7 @@
       "name": "7. Locations",
       "item": [
         {
-          "name": "List States",
+          "name": "List Governorates (States)",
           "request": {
             "method": "GET",
             "header": [],
@@ -1606,47 +1606,17 @@
                 }
               ]
             },
-            "description": "Fetch top-level states."
+            "description": "Fetch top-level Governorates (States)."
           },
           "response": []
         },
         {
-          "name": "List Districts",
+          "name": "List Wilayats (Cities)",
           "request": {
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{base_url}}/api/locations/?type=district&parent_id={{state_id}}",
-              "host": [
-                "{{base_url}}"
-              ],
-              "path": [
-                "api",
-                "locations",
-                ""
-              ],
-              "query": [
-                {
-                  "key": "type",
-                  "value": "district"
-                },
-                {
-                  "key": "parent_id",
-                  "value": "{{state_id}}"
-                }
-              ]
-            },
-            "description": "Fetch districts for a selected state."
-          },
-          "response": []
-        },
-        {
-          "name": "List Cities",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{base_url}}/api/locations/?type=city&parent_id={{district_id}}",
+              "raw": "{{base_url}}/api/locations/?type=city&parent_id={{gov_id}}",
               "host": [
                 "{{base_url}}"
               ],
@@ -1662,11 +1632,11 @@
                 },
                 {
                   "key": "parent_id",
-                  "value": "{{district_id}}"
+                  "value": "{{gov_id}}"
                 }
               ]
             },
-            "description": "Fetch cities for a selected district."
+            "description": "Fetch Wilayats (Cities) for a selected Governorate (State)."
           },
           "response": []
         }
@@ -1798,7 +1768,12 @@
       "type": "string"
     },
     {
-      "key": "location_id",
+      "key": "gov_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "city_id",
       "value": "",
       "type": "string"
     },

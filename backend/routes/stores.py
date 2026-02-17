@@ -38,26 +38,45 @@ async def create_store(
     # Logic: "for a user first store is free if sae user wnated to create mulitple store there will be a rpice"
     # We will just allow creation for now.
     
-    # Validate City (Location)
-    if payload.city:
-        location = db.select_one("locations", payload.city)
+    # Validate Governorate (Location)
+    if payload.location_id:
+        location = db.select_one("locations", payload.location_id)
         if not location:
-            raise HTTPException(status_code=400, detail="Invalid city (location_id)")
+            raise HTTPException(status_code=400, detail="Invalid location_id (Governorate)")
+        if location.get("type") != "state":
+             raise HTTPException(status_code=400, detail="location_id must be a Governorate (State)")
+
+    # Validate Place (City/Wilayat)
+    place_name = None
+    if payload.place_id:
+        city = db.select_one("locations", payload.place_id)
+        if not city:
+             raise HTTPException(status_code=400, detail="Invalid place_id (City)")
+        if city.get("type") != "city":
+             raise HTTPException(status_code=400, detail="place_id must be a City (Wilayat)")
+        
+        # Check if city belongs to governorate
+        if city.get("parent_id") != payload.location_id:
+             raise HTTPException(status_code=400, detail="City does not belong to the selected Governorate")
+             
+        place_name = city.get("name_en") # Storing English name for now in the text column
 
     data = payload.dict()
     data["user_id"] = user_id
     
-    # Map name_en to name in DB, city to location_id
+    # Map name_en to name in DB
     data["name"] = payload.name_en
-    data["location_id"] = payload.city
+    # location_id is already in payload and matches DB column
+    
+    # Map place_id to place (Text)
+    if place_name:
+        data["place"] = place_name
     
     # Remove fields not in DB or mapped
-    if "city" in data: del data["city"]
+    if "place_id" in data: del data["place_id"]
     if "name_en" in data: del data["name_en"]
     
     data["status"] = "active" # Auto-approve stores as per new requirement
-    
-    # Store name_ar and place are already in data and DB (via migration)
 
     store = db.insert("stores", data)
     if not store:

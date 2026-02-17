@@ -107,8 +107,8 @@ class StoreCreate(BaseModel):
     name_en: str
     name_ar: str
     description: Optional[str] = None
-    city: str # UUID for location_id
-    place: str # Specific area
+    location_id: str # UUID for Governorate
+    place_id: str # UUID for City (Wilayat)
     logo_url: Optional[str] = None
     cover_image_url: Optional[str] = None
     plan_id: str # Required for store creation
@@ -117,8 +117,8 @@ class StoreUpdate(BaseModel):
     name_en: Optional[str] = None
     name_ar: Optional[str] = None
     description: Optional[str] = None
-    city: Optional[str] = None
-    place: Optional[str] = None
+    location_id: Optional[str] = None
+    place_id: Optional[str] = None
     logo_url: Optional[str] = None
     cover_image_url: Optional[str] = None
     status: Optional[str] = None
@@ -147,8 +147,8 @@ class ListingCreate(BaseModel):
     condition: str # new, used
     price: float
     currency: str = "AED"
-    city: str # UUID for location_id
-    place: str # Specific area
+    location_id: str # UUID for Governorate
+    place_id: str # UUID for City (Wilayat)
     plan_id: Optional[str] = None
     attributes_values: Optional[dict] = {}
     images: Optional[List[str]] = [] # URLs
@@ -158,8 +158,8 @@ class ListingUpdate(BaseModel):
     description: Optional[str] = None
     condition: Optional[str] = None
     price: Optional[float] = None
-    city: Optional[str] = None
-    place: Optional[str] = None
+    location_id: Optional[str] = None
+    place_id: Optional[str] = None
     attributes_values: Optional[dict] = None
     status: Optional[str] = None
     
