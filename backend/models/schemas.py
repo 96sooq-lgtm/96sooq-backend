@@ -69,19 +69,6 @@ class CategoryOut(BaseModel):
 
 
 # Customer Auth schemas
-class OTPRequest(BaseModel):
-	phone_number: str
-
-
-class OTPVerify(BaseModel):
-	phone_number: str
-	otp: str
-
-
-class CustomerUpdate(BaseModel):
-	name: str
-
-
 class CustomerOut(BaseModel):
 	id: str
 	name: Optional[str] = None

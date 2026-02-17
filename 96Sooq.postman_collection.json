@@ -1,0 +1,1826 @@
+{
+  "info": {
+    "_postman_id": "c1c780c4-a888-40fd-b0e6-fd4a9dd26a60",
+    "name": "96sooq Platform - Complete API",
+    "description": "Complete end-to-end API collection for 96sooq marketplace platform.\n\n**Features:**\n- OAuth & Phone OTP Authentication\n- Admin Panel APIs\n- Category Management (Hierarchical + Dynamic Attributes)\n- Store Management\n- Listing Management (Free first listing + Payment)\n- Approval Workflows\n\n**Setup:**\n1. Import this collection\n2. Set environment variables: `base_url`, `admin_token`, `customer_token`\n3. Run requests in order for best results",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "51661465",
+    "_collection_link": "https://go.postman.co/collection/51661465-c1c780c4-a888-40fd-b0e6-fd4a9dd26a60?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "1. Authentication",
+      "item": [
+        {
+          "name": "Admin Auth",
+          "item": [
+            {
+              "name": "Admin Signup",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Admin User\",\n  \"email\": \"admin@96sooq.com\",\n  \"password\": \"SecurePass123!\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/admin/signup",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "signup"
+                  ]
+                },
+                "description": "Create a new admin account"
+              },
+              "response": []
+            },
+            {
+              "name": "Admin Login",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "    var jsonData = pm.response.json();",
+                      "    pm.environment.set(\"admin_token\", jsonData.access_token);",
+                      "    console.log(\"Admin token saved!\");",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"email\": \"admin@96sooq.com\",\n  \"password\": \"SecurePass123!\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/admin/login",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "login"
+                  ]
+                },
+                "description": "Login as admin. Token is automatically saved to environment."
+              },
+              "response": []
+            }
+          ],
+          "description": "Admin authentication endpoints"
+        },
+        {
+          "name": "OAuth (Google/Apple/Facebook)",
+          "item": [
+            {
+              "name": "Step 1 - Check User Exists",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "    var jsonData = pm.response.json();",
+                      "    if (jsonData.exists && jsonData.access_token) {",
+                      "        pm.environment.set(\"customer_token\", jsonData.access_token);",
+                      "        console.log(\"User exists! Token saved.\");",
+                      "    } else {",
+                      "        console.log(\"New user - proceed to Step 2\");",
+                      "    }",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"provider\": \"google\",\n  \"provider_id\": \"google_123456789\",\n  \"email\": \"ahmed.ali@gmail.com\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/auth/oauth/check-user",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "auth",
+                    "oauth",
+                    "check-user"
+                  ]
+                },
+                "description": "Check if OAuth user exists. If exists, returns token. If new, returns exists: false."
+              },
+              "response": []
+            },
+            {
+              "name": "Step 2 - Complete Profile (New User)",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "if (pm.response.code === 200) {",
+                      "    var jsonData = pm.response.json();",
+                      "    pm.environment.set(\"customer_token\", jsonData.access_token);",
+                      "    console.log(\"User created! Token saved.\");",
+                      "}"
+                    ],
+                    "type": "text/javascript"
+                  }
+                }
+              ],
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"provider\": \"google\",\n  \"provider_id\": \"google_123456789\",\n  \"email\": \"ahmed.ali@gmail.com\",\n  \"name\": \"Ahmed Ali\",\n  \"phone_number\": \"+971501234567\",\n  \"profile_picture\": \"https://lh3.googleusercontent.com/a/default-user\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/auth/oauth/complete-profile",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "auth",
+                    "oauth",
+                    "complete-profile"
+                  ]
+                },
+                "description": "Complete profile for new OAuth user. Provide name and phone number."
+              },
+              "response": []
+            }
+          ],
+          "description": "OAuth authentication (Google, Apple, Facebook)"
+        }
+      ],
+      "description": "All authentication methods"
+    },
+    {
+      "name": "2. Categories",
+      "item": [
+        {
+          "name": "Admin - Category Management",
+          "item": [
+            {
+              "name": "Create Root Category",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name_en\": \"Vehicles\",\n  \"name_ar\": \"\",\n  \"image_url\": \"https://cdn.example.com/vehicles.png\",\n  \"is_active\": true\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/admin/categories/",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "categories",
+                    ""
+                  ]
+                },
+                "description": "Create a root category. Save the returned ID for sub-categories."
+              },
+              "response": []
+            },
+            {
+              "name": "Create Sub-Category with Attributes",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name_en\": \"Cars\",\n    \"name_ar\": \"Cars\",\n  \"parent_id\": \"550e8400-e29b-41d4-a716-446655440000\",\n  \"image_url\": \"https://cdn.example.com/cars.png\",\n  \"is_active\": true\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/admin/categories/",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "categories",
+                    ""
+                  ]
+                },
+                "description": "Create sub-category with dynamic attributes. Replace parent_id with actual ID from previous request."
+              },
+              "response": []
+            },
+            {
+              "name": "List All Categories (Admin)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/categories/?skip=0&limit=10",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "categories",
+                    ""
+                  ],
+                  "query": [
+                    {
+                      "key": "skip",
+                      "value": "0"
+                    },
+                    {
+                      "key": "limit",
+                      "value": "10"
+                    }
+                  ]
+                },
+                "description": "List all categories (admin view)"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Category Details",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/categories/:id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "categories",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "660e8400-e29b-41d4-a716-446655440001"
+                    }
+                  ]
+                },
+                "description": "Get specific category with attributes_schema"
+              },
+              "response": []
+            },
+            {
+              "name": "Update Category",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name\": \"Cars - Updated\",\n  \"is_active\": true\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/admin/categories/:id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "categories",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "660e8400-e29b-41d4-a716-446655440001"
+                    }
+                  ]
+                },
+                "description": "Update category details"
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Category",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/categories/:id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "categories",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "category-id-here"
+                    }
+                  ]
+                },
+                "description": "Delete a category"
+              },
+              "response": []
+            }
+          ],
+          "description": "Admin endpoints for category management"
+        },
+        {
+          "name": "Public - Browse Categories",
+          "item": [
+            {
+              "name": "Get Root Categories",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/categories/",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "categories",
+                    ""
+                  ]
+                },
+                "description": "Get all root categories (parent_id is null)"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Sub-Categories",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/categories/?parent_id=83cd8463-a859-447f-8a97-5bd1c125b406",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "categories",
+                    ""
+                  ],
+                  "query": [
+                    {
+                      "key": "parent_id",
+                      "value": "83cd8463-a859-447f-8a97-5bd1c125b406"
+                    }
+                  ]
+                },
+                "description": "Get sub-categories of a parent category"
+              },
+              "response": []
+            },
+            {
+              "name": "Check if Leaf Category",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/categories/:id/is-leaf",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "categories",
+                    ":id",
+                    "is-leaf"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "660e8400-e29b-41d4-a716-446655440001"
+                    }
+                  ]
+                },
+                "description": "Check if category is a leaf node (can create listings)"
+              },
+              "response": []
+            }
+          ],
+          "description": "Public endpoints for browsing categories"
+        }
+      ],
+      "description": "Category management (hierarchical + dynamic attributes)"
+    },
+    {
+      "name": "3. Stores",
+      "item": [
+        {
+          "name": "User - Store Operations",
+          "item": [
+            {
+              "name": "Create Store",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{customer_token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name_en\": \"Ahmed Cars\",\n  \"name_ar\": \"سيارات أحمد\",\n  \"description\": \"Best car dealer in Dubai\",\n  \"city\": \"{{location_id}}\",\n  \"place\": \"Business Bay\",\n  \"plan_id\": \"{{plan_id}}\",\n  \"logo_url\": \"https://example.com/logo.png\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/stores/",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "stores",
+                    ""
+                  ]
+                },
+                "description": "Create a new store. Status will be 'pending_approval'."
+              },
+              "response": []
+            },
+            {
+              "name": "List All Active Stores",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/stores/",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "stores",
+                    ""
+                  ]
+                },
+                "description": "List all active stores (public)"
+              },
+              "response": []
+            },
+            {
+              "name": "List My Stores",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{customer_token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/stores/?user_id=current",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "stores",
+                    ""
+                  ],
+                  "query": [
+                    {
+                      "key": "user_id",
+                      "value": "current"
+                    }
+                  ]
+                },
+                "description": "List stores belonging to current user"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Store Details",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/stores/:id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "stores",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "store-id-here"
+                    }
+                  ]
+                },
+                "description": "Get specific store details"
+              },
+              "response": []
+            },
+            {
+              "name": "Update My Store",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{customer_token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name_en\": \"Ahmed Cars Updated\",\n  \"name_ar\": \"سيارات أحمد - محدث\",\n  \"description\": \"Updated description - Best cars in UAE!\",\n  \"city\": \"{{location_id}}\",\n  \"place\": \"Deira\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/stores/:id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "stores",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "store-id-here"
+                    }
+                  ]
+                },
+                "description": "Update store (owner only)"
+              },
+              "response": []
+            }
+          ],
+          "description": "User store operations"
+        },
+        {
+          "name": "Admin - Store Approval",
+          "item": [
+            {
+              "name": "Approve Store",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/stores/:id/approve",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "stores",
+                    ":id",
+                    "approve"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "store-id-here"
+                    }
+                  ]
+                },
+                "description": "Approve a pending store"
+              },
+              "response": []
+            },
+            {
+              "name": "Reject Store",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/stores/:id/reject?reason=Inappropriate content",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "stores",
+                    ":id",
+                    "reject"
+                  ],
+                  "query": [
+                    {
+                      "key": "reason",
+                      "value": "Inappropriate content"
+                    }
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "store-id-here"
+                    }
+                  ]
+                },
+                "description": "Reject a store with reason"
+              },
+              "response": []
+            }
+          ],
+          "description": "Admin store approval endpoints"
+        }
+      ],
+      "description": "Store management"
+    },
+    {
+      "name": "4. Listings",
+      "item": [
+        {
+          "name": "User - Listing Operations",
+          "item": [
+            {
+              "name": "Check Quota & Prices",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{customer_token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/subscriptions/listing-prices?is_store=false",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "subscriptions",
+                    "listing-prices"
+                  ],
+                  "query": [
+                    {
+                      "key": "is_store",
+                      "value": "false"
+                    }
+                  ]
+                },
+                "description": "Check user quota. Returns 'quota_status' (can_create_free, can_create_paid, usage, message)."
+              },
+              "response": []
+            },
+            {
+              "name": "Create Listing (First one FREE)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{customer_token}}"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"title\": \"Toyota Land Cruiser\",\n  \"description\": \"Like new condition\",\n  \"condition\": \"used\",\n  \"price\": 18000,\n  \"category_id\": \"{{category_id}}\",\n  \"city\": \"{{location_id}}\",\n  \"place\": \"Jumeirah\",\n  \"images\": [\"http://example.com/img1.jpg\"],\n  \"attributes_values\": {\"Color\": \"White\", \"Year\": \"2023\"}\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/listings/",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "listings",
+                    ""
+                  ]
+                },
+                "description": "Create a listing. First listing is free. No plan_id needed."
+              },
+              "response": []
+            },
+            {
+              "name": "Create Second Listing (Requires Quota)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{customer_token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"category_id\": \"{{category_id}}\",\n  \"title\": \"Honda Civic 2019 - Like New\",\n  \"description\": \"Low mileage, excellent condition\",\n  \"condition\": \"used\",\n  \"price\": 65000,\n  \"currency\": \"AED\",\n  \"city\": \"{{location_id}}\",\n  \"place\": \"Dubai Marina\",\n  \"attributes_values\": {\n    \"fuel_type\": \"Petrol\",\n    \"year\": 2019,\n    \"transmission\": \"Automatic\",\n    \"mileage\": 25000\n  },\n  \"images\": [\n    \"https://cdn.example.com/honda1.jpg\"\n  ]\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/listings/",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "listings",
+                    ""
+                  ]
+                },
+                "description": "Create 2nd+ listing. Requires quota. System checks active subscription and deducts 1 credit automatically. If no quota, returns 402."
+              },
+              "response": []
+            },
+            {
+              "name": "List All Active Listings",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/listings/",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "listings",
+                    ""
+                  ]
+                },
+                "description": "List all active listings (public)"
+              },
+              "response": []
+            },
+            {
+              "name": "List Listings by Category",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/listings/?category_id=660e8400-e29b-41d4-a716-446655440001",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "listings",
+                    ""
+                  ],
+                  "query": [
+                    {
+                      "key": "category_id",
+                      "value": "660e8400-e29b-41d4-a716-446655440001"
+                    }
+                  ]
+                },
+                "description": "Filter listings by category"
+              },
+              "response": []
+            },
+            {
+              "name": "Search Listings",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/listings/?search=Toyota Camry",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "listings",
+                    ""
+                  ],
+                  "query": [
+                    {
+                      "key": "search",
+                      "value": "Toyota Camry"
+                    }
+                  ]
+                },
+                "description": "Search listings by keyword"
+              },
+              "response": []
+            },
+            {
+              "name": "Get Listing Details",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/listings/:id",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "listings",
+                    ":id"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "listing-id-here"
+                    }
+                  ]
+                },
+                "description": "Get specific listing with all details"
+              },
+              "response": []
+            },
+            {
+              "name": "Update Listing (Loophole Check)",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{customer_token}}",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"price\": 17500\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/listings/{{listing_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "listings",
+                    "{{listing_id}}"
+                  ]
+                },
+                "description": "Update listing. Editing sensitive fields (price, title) on an Active listing reverts status to Pending Approval."
+              },
+              "response": []
+            }
+          ],
+          "description": "User listing operations"
+        },
+        {
+          "name": "Admin - Listing Approval",
+          "item": [
+            {
+              "name": "List All Pending Listings",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/listings/?status=pending_approval",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "listings",
+                    ""
+                  ],
+                  "query": [
+                    {
+                      "key": "status",
+                      "value": "pending_approval"
+                    }
+                  ]
+                },
+                "description": "List all listings awaiting approval"
+              },
+              "response": []
+            },
+            {
+              "name": "List All Listings (Any Status)",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/listings/",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "listings",
+                    ""
+                  ]
+                },
+                "description": "List all listings regardless of status"
+              },
+              "response": []
+            },
+            {
+              "name": "Approve Listing",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/listings/:id/approve",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "listings",
+                    ":id",
+                    "approve"
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "listing-id-here"
+                    }
+                  ]
+                },
+                "description": "Approve a listing. Status becomes 'active'."
+              },
+              "response": []
+            },
+            {
+              "name": "Reject Listing",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/listings/:id/reject?reason=Inappropriate images",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "listings",
+                    ":id",
+                    "reject"
+                  ],
+                  "query": [
+                    {
+                      "key": "reason",
+                      "value": "Inappropriate images"
+                    }
+                  ],
+                  "variable": [
+                    {
+                      "key": "id",
+                      "value": "listing-id-here"
+                    }
+                  ]
+                },
+                "description": "Reject a listing with reason"
+              },
+              "response": []
+            }
+          ],
+          "description": "Admin listing approval endpoints"
+        }
+      ],
+      "description": "Listing management (Free first listing + Payment)"
+    },
+    {
+      "name": "5. Subscriptions",
+      "item": [
+        {
+          "name": "Admin - Subscription Management",
+          "item": [
+            {
+              "name": "Create Subscription",
+              "request": {
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbkA5NnNvb3EuY29tIiwiZXhwIjoxNzcwNjM4MzU0fQ.G14yr7oYch0MXhUzPYwhERohex2B0AodEokW4azRZWk",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"name_en\": \"Basic Listing\",\n  \"name_ar\": \"قائمة أساسية\",\n  \"type\": \"listing\",\n  \"price\": 10.0,\n  \"quota\": 5,\n  \"duration_days\": 30,\n  \"target_audience\": \"individual\",\n  \"description\": \"5 Paid Listings for 30 days.\",\n  \"is_active\": true\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/admin/subscriptions/",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "subscriptions",
+                    ""
+                  ]
+                },
+                "description": "Create a paid listing plan."
+              },
+              "response": []
+            },
+            {
+              "name": "List Subscription",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/subscriptions/",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "subscriptions",
+                    ""
+                  ]
+                },
+                "description": "List all categories (admin view)"
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Subscription",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/subscriptions/{plan_id}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "subscriptions",
+                    "{plan_id}"
+                  ]
+                },
+                "description": "Delete a plan"
+              },
+              "response": []
+            }
+          ],
+          "description": "Admin endpoints for category management"
+        },
+        {
+          "name": "User - Subscription Management",
+          "item": [
+            {
+              "name": "Purchase Subscription",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{customer_token}}",
+                    "type": "text"
+                  },
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"plan_id\": \"{{plan_id}}\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/subscriptions/purchase",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "subscriptions",
+                    "purchase"
+                  ]
+                },
+                "description": "Purchase a plan to gain quota."
+              },
+              "response": []
+            },
+            {
+              "name": "Get My Subscriptions",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{customer_token}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/subscriptions/my-subscription",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "subscriptions",
+                    "my-subscription"
+                  ]
+                },
+                "description": "View active subscriptions and remaining quota."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Public - Browse subscriptions",
+          "item": [
+            {
+              "name": "Get listing subscription",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{customer_token}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/subscriptions/listing-prices",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "subscriptions",
+                    "listing-prices"
+                  ]
+                },
+                "description": "Get available plans and current quota status."
+              },
+              "response": []
+            },
+            {
+              "name": "Get Ad-prices",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/subscriptions/ad-prices",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "subscriptions",
+                    "ad-prices"
+                  ]
+                },
+                "description": "Get ad boosting prices"
+              },
+              "response": []
+            },
+            {
+              "name": "Get offers",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/api/subscriptions/offer-listing-prices",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "subscriptions",
+                    "offer-listing-prices"
+                  ]
+                },
+                "description": "Get offer prices"
+              },
+              "response": []
+            }
+          ],
+          "description": "Public endpoints for browsing categories"
+        }
+      ],
+      "description": "Category management (hierarchical + dynamic attributes)"
+    },
+    {
+      "name": "6. Ad Banners",
+      "item": [
+        {
+          "name": "User - Ad Banners",
+          "item": [
+            {
+              "name": "Check Ad Prices",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{customer_token}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/subscriptions/ad-prices",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "subscriptions",
+                    "ad-prices"
+                  ]
+                },
+                "description": "Get prices for ad boosting plans."
+              },
+              "response": []
+            },
+            {
+              "name": "Boost Listing",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{customer_token}}",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"listing_id\": \"{{listing_id}}\",\n  \"user_id\": \"{{user_id}}\",\n  \"name\": \"Boost Land Cruiser\",\n  \"type\": \"product_listing\",\n  \"plan_id\": \"{{plan_id}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/banners/boost",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "banners",
+                    "boost"
+                  ]
+                },
+                "description": "Boost an existing listing."
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Admin - Ad Banners",
+          "item": [
+            {
+              "name": "Create Banner (Admin)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"user_id\": \"USER_ID_HERE\",\n  \"name\": \"System Banner\",\n  \"description\": \"Admin created banner\",\n  \"type\": \"top_offers\",\n  \"image_url\": \"https://cdn.example.com/system-banner.jpg\",\n  \"link_url\": \"https://example.com/promo\",\n  \"plan_id\": \"{{plan_id}}\"\n}"
+                },
+                "url": {
+                  "raw": "{{base_url}}/api/admin/banners/",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "banners",
+                    ""
+                  ]
+                },
+                "description": "Admin creates banner directly. Status: active."
+              },
+              "response": []
+            },
+            {
+              "name": "List All Banners",
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/banners/?status=pending_approval",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "banners",
+                    ""
+                  ],
+                  "query": [
+                    {
+                      "key": "status",
+                      "value": "pending_approval"
+                    }
+                  ]
+                },
+                "description": "List banners with filters (admin)"
+              },
+              "response": []
+            },
+            {
+              "name": "Approve Banner",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/banners/{{banner_id}}/approve",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "banners",
+                    "{{banner_id}}",
+                    "approve"
+                  ]
+                },
+                "description": "Approve banner. Sets expires_at based on plan."
+              },
+              "response": []
+            },
+            {
+              "name": "Reject Banner",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/banners/{{banner_id}}/reject",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "banners",
+                    "{{banner_id}}",
+                    "reject"
+                  ]
+                },
+                "description": "Reject banner."
+              },
+              "response": []
+            },
+            {
+              "name": "Delete Banner",
+              "request": {
+                "method": "DELETE",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{admin_token}}"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/admin/banners/{{banner_id}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "admin",
+                    "banners",
+                    "{{banner_id}}"
+                  ]
+                },
+                "description": "Delete banner"
+              },
+              "response": []
+            }
+          ]
+        }
+      ],
+      "description": "Ad Banners Management"
+    },
+    {
+      "name": "7. Locations",
+      "item": [
+        {
+          "name": "List States",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/locations/?type=state&is_active=true",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "locations",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "state"
+                },
+                {
+                  "key": "is_active",
+                  "value": "true"
+                }
+              ]
+            },
+            "description": "Fetch top-level states."
+          },
+          "response": []
+        },
+        {
+          "name": "List Districts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/locations/?type=district&parent_id={{state_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "locations",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "district"
+                },
+                {
+                  "key": "parent_id",
+                  "value": "{{state_id}}"
+                }
+              ]
+            },
+            "description": "Fetch districts for a selected state."
+          },
+          "response": []
+        },
+        {
+          "name": "List Cities",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/locations/?type=city&parent_id={{district_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "locations",
+                ""
+              ],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "city"
+                },
+                {
+                  "key": "parent_id",
+                  "value": "{{district_id}}"
+                }
+              ]
+            },
+            "description": "Fetch cities for a selected district."
+          },
+          "response": []
+        }
+      ],
+      "description": "Public APIs to fetch location hierarchy."
+    },
+    {
+      "name": "8. Storage (Uploads)",
+      "item": [
+        {
+          "name": "Upload File (Proxy)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": "/Users/kandoewinpvtltd/Downloads/Download premium png of PNG Scooter motorcycle vehicle transparent background by Sasi about delivery png, delivery man png, delivery, food delivery, and 3d 12120713.jpeg"
+                },
+                {
+                  "key": "folder",
+                  "value": "Cateogoies",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/storage/upload",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "storage",
+                "upload"
+              ]
+            },
+            "description": "Upload a file via backend proxy. Returns a public URL."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Presigned Upload URL (Direct S3)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"file_name\": \"test-image.jpg\",\n  \"file_type\": \"image/jpeg\",\n  \"folder\": \"uploads\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/storage/presigned-url/upload",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "storage",
+                "presigned-url",
+                "upload"
+              ]
+            },
+            "description": "Get a presigned URL to upload directly to S3 from frontend."
+          },
+          "response": []
+        }
+      ],
+      "description": "File upload and retrieval endpoints"
+    },
+    {
+      "name": "New Request",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": ""
+        }
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "admin_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "customer_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "listing_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "plan_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "category_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "location_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "state_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "district_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "banner_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}
