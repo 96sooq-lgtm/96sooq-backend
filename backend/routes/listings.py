@@ -131,43 +131,10 @@ async def create_listing(
             detail="Condition must be 'new' or 'used'"
         )
 
-    # 4. Enforce payment/quota rule (For Individual Users Only)
-    # Store users follow Store Plan limits (Not implemented in detail here, assumed unlimited or managed elsewhere)
-    if not is_store_user:
-        # Check if this is user's first listing (Individual)
-        user_listings = db.select("listings", filters={"user_id": user_id, "store_id": None})
-        listing_count = len(user_listings) if user_listings else 0
-        is_first_listing = listing_count == 0
-        
-        if not is_first_listing:
-            # Check for active subscription
-            # ... (Same logic as before)
-            now = datetime.utcnow().isoformat()
-            subs = db.select("user_subscriptions", filters={
-                "user_id": user_id,
-                "status": "active"
-            })
-            
-            valid_sub = None
-            for sub in subs:
-                # Check expiry
-                if sub["end_date"] > now:
-                    # Check quota
-                    q = sub.get("remaining_quota", 0)
-                    if q == -1 or q > 0:
-                        valid_sub = sub
-                        break
-            
-            if not valid_sub:
-                 raise HTTPException(
-                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                    detail="No active subscription found. Please purchase a plan to create more listings."
-                )
-                
-            # Deduct quota if not unlimited
-            if valid_sub["remaining_quota"] != -1:
-                new_quota = valid_sub["remaining_quota"] - 1
-                db.update("user_subscriptions", valid_sub["id"], {"remaining_quota": new_quota})
+    # 4. REMOVED Quota Check - Now handled at Checkout
+    # Listing is created as 'draft' first. Quota is checked when user hits "Checkout".
+    # if not is_store_user:
+    #     ... (Logic moved to /payments/checkout)
     
     # 5. Prepare Data
     data = payload.dict(exclude={"images", "place_id"})
@@ -178,7 +145,7 @@ async def create_listing(
     
     data["user_id"] = user_id
     data["location_id"] = location_id
-    data["status"] = "pending_approval"
+    data["status"] = "draft" # Default to draft
     
     # Force store_id if store user
     if is_store_user:

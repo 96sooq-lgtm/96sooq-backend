@@ -107,11 +107,11 @@ class StoreCreate(BaseModel):
     name_en: str
     name_ar: str
     description: Optional[str] = None
-    location_id: str # UUID for Governorate
-    place_id: str # UUID for City (Wilayat)
+    location_id: UUID # UUID for Governorate
+    place_id: UUID # UUID for City (Wilayat)
     logo_url: Optional[str] = None
     cover_image_url: Optional[str] = None
-    plan_id: str # Required for store creation
+    plan_id: Optional[str] = None # Optional for creation (e.g. free trial or select later)
 
 class StoreUpdate(BaseModel):
     name_en: Optional[str] = None

@@ -51,16 +51,21 @@ async def get_current_customer(token: str = Depends(oauth2_scheme)):
     
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
-        phone: str = payload.get("sub")
+        sub: str = payload.get("sub")
         role: str = payload.get("role")
         
-        if phone is None or role != "customer":
+        if sub is None or role != "customer":
             raise credentials_exception
             
     except JWTError:
         raise credentials_exception
         
-    user = db.select("app_users", filters={"phone_number": phone})
+    # Check if sub is email or phone
+    if "@" in sub:
+        user = db.select("app_users", filters={"email": sub})
+    else:
+        user = db.select("app_users", filters={"phone_number": sub})
+        
     if not user:
         raise credentials_exception
         

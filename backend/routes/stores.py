@@ -40,7 +40,7 @@ async def create_store(
     
     # Validate Governorate (Location)
     if payload.location_id:
-        location = db.select_one("locations", payload.location_id)
+        location = db.select_one("locations", str(payload.location_id))
         if not location:
             raise HTTPException(status_code=400, detail="Invalid location_id (Governorate)")
         if location.get("type") != "state":
@@ -49,19 +49,25 @@ async def create_store(
     # Validate Place (City/Wilayat)
     place_name = None
     if payload.place_id:
-        city = db.select_one("locations", payload.place_id)
+        city = db.select_one("locations", str(payload.place_id))
         if not city:
              raise HTTPException(status_code=400, detail="Invalid place_id (City)")
         if city.get("type") != "city":
              raise HTTPException(status_code=400, detail="place_id must be a City (Wilayat)")
         
         # Check if city belongs to governorate
-        if city.get("parent_id") != payload.location_id:
+        if city.get("parent_id") != str(payload.location_id):
              raise HTTPException(status_code=400, detail="City does not belong to the selected Governorate")
              
         place_name = city.get("name_en") # Storing English name for now in the text column
 
+    # Convert UUIDs to strings for DB
     data = payload.dict()
+    data["location_id"] = str(payload.location_id)
+    data["place_id"] = str(payload.place_id)
+    if data.get("plan_id"):
+        data["plan_id"] = str(payload.plan_id) if payload.plan_id else None
+        
     data["user_id"] = user_id
     
     # Map name_en to name in DB

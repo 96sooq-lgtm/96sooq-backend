@@ -1725,15 +1725,43 @@
       "description": "File upload and retrieval endpoints"
     },
     {
-      "name": "New Request",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": ""
+      "name": "9. Payments",
+      "item": [
+        {
+          "name": "Checkout Bundle",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{customer_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"listing_id\": \"{{listing_id}}\",\n  \"listing_plan_id\": \"{{plan_id}}\",\n  \"ad_plan_id\": \"{{ad_plan_id}}\",\n  \"currency\": \"OMR\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/payments/checkout",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "checkout"
+              ]
+            },
+            "description": "Checkout Bundle (Listing Plan + Ad Boost). Handles Free/Quota and Paid flows. Returns iframe_url or success status."
+          },
+          "response": []
         }
-      },
-      "response": []
+      ],
+      "description": "Payment Gateway Integration (Paymob)"
     }
   ],
   "variable": [

@@ -18,6 +18,7 @@ from routes.subscriptions import user_router as user_subscriptions_router
 from routes.banners import router as banners_router
 from routes.banners import admin_router as admin_banners_router
 from routes.locations import router as locations_router
+from routes.payments import router as payments_router
 
 # Load settings
 settings = Settings()
@@ -63,6 +64,7 @@ app.include_router(admin_subscriptions_router)
 app.include_router(user_subscriptions_router)
 app.include_router(banners_router)
 app.include_router(admin_banners_router)
+app.include_router(payments_router)
 
 
 @app.get("/")
