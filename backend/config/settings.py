@@ -12,9 +12,8 @@ class Settings(BaseSettings):
     supabase_service_role_key: Optional[str] = None # Make optional if not always needed, or ensure it's in .env
     supabase_key: Optional[str] = None # Added matches .env SUPABASE_KEY
 
-    # JWT/Auth
-    secret_key: str = "your-secret-key-CHANGE-IN-PRODUCTION"
-    jwt_secret: Optional[str] = None # Added matches .env JWT_SECRET
+    # JWT/Auth — reads from JWT_SECRET env var (used in .env and Render)
+    secret_key: str = Field(default="your-secret-key-CHANGE-IN-PRODUCTION", alias="JWT_SECRET")
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
     
@@ -42,6 +41,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
-        extra = "ignore" # Ignore extra env vars to prevent startup crash
+        extra = "ignore"
+        populate_by_name = True  # Allow both field name and alias
 
 settings = Settings()
