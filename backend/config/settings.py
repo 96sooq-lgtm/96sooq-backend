@@ -12,10 +12,15 @@ class Settings(BaseSettings):
     supabase_service_role_key: Optional[str] = None # Make optional if not always needed, or ensure it's in .env
     supabase_key: Optional[str] = None # Added matches .env SUPABASE_KEY
 
-    # JWT/Auth — reads from JWT_SECRET env var (used in .env and Render)
-    secret_key: str = Field(default="your-secret-key-CHANGE-IN-PRODUCTION", alias="JWT_SECRET")
+    # JWT/Auth — field name must match env var name (pydantic-settings reads by field name)
+    # JWT_SECRET in .env → jwt_secret field → secret_key property used by auth code
+    jwt_secret: str = "your-secret-key-CHANGE-IN-PRODUCTION"
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
+
+    @property
+    def secret_key(self) -> str:
+        return self.jwt_secret
     
     # Database
     database_url: Optional[str] = None
