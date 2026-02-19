@@ -207,9 +207,19 @@ async def list_all_subcategories(
     result = db.query("categories", query_func)
     subcategories = result.data if result.data else []
 
+    # Enrich with parent category names
+    parent_cache: dict = {}
     for category in subcategories:
         if category.get("image_url"):
             category["image_url"] = get_viewable_image_url(category["image_url"])
+
+        pid = category.get("parent_id")
+        if pid:
+            if pid not in parent_cache:
+                parent_cache[pid] = db.select_one("categories", pid) or {}
+            parent = parent_cache[pid]
+            category["parent_name_en"] = parent.get("name_en")
+            category["parent_name_ar"] = parent.get("name_ar")
 
     return subcategories
 

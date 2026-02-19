@@ -62,6 +62,8 @@ class CategoryOut(BaseModel):
 	name_ar: str
 	image_url: Optional[str] = None
 	parent_id: Optional[str] = None
+	parent_name_en: Optional[str] = None
+	parent_name_ar: Optional[str] = None
 	attributes_schema: Optional[list | dict] = None
 	is_active: bool
 	created_at: Optional[str] = None
