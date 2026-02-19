@@ -195,16 +195,31 @@ class ListingOut(BaseModel):
     location_details: Optional[dict] = None # Populated with location name/type
     created_at: Optional[str] = None
 # Ad Banners
+# User boost: minimal payload — all other fields auto-derived from listing + JWT
+class UserBoostCreate(BaseModel):
+    listing_id: str
+    type: str  # carousel, product_listing, top_offers, chat_screen
+    description: Optional[str] = None
+
+# Admin banner: no user_id, no plan_id — admin creates system banners directly
+class AdminBannerCreate(BaseModel):
+    name: str
+    type: str  # carousel, product_listing, top_offers, chat_screen
+    image_url: Optional[str] = None
+    link_url: Optional[str] = None
+    description: Optional[str] = None
+
+# Keep for backward-compat (used internally only)
 class AdBannerCreate(BaseModel):
     user_id: str
-    name: str # Auto-generated? Or user provided? Let's keep it.
+    name: str
     description: Optional[str] = None
-    type: str # carousel, product_listing, top_offers, chat_screen
-    image_url: Optional[str] = None # Optional if boosting a listing (use listing image)
+    type: str
+    image_url: Optional[str] = None
     link_url: Optional[str] = None
     plan_id: Optional[str] = None
-    listing_id: Optional[str] = None # Required for boosting
-    plan_id: Optional[str] = None
+    listing_id: Optional[str] = None
+
 
 class AdBannerUpdate(BaseModel):
     name: Optional[str] = None
