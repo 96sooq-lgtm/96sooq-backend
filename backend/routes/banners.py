@@ -140,6 +140,28 @@ async def list_active_banners(
     return result.data if result.data else []
 
 
+@router.get("/home", response_model=List[schemas.AdBannerOut])
+async def get_home_banners(
+    limit: int = Query(20, ge=1, le=100)
+):
+    """
+    Public home page banners — no auth required.
+    Returns only admin-created active banners (no listing_id),
+    ordered by newest first. Frontend can display as a sliding carousel.
+    """
+    def query_func(table):
+        return (
+            table.select("*")
+            .eq("status", "active")
+            .is_("listing_id", "null")   # admin banners only (no listing_id)
+            .limit(limit)
+            .order("created_at", desc=True)
+        )
+
+    result = db.query("ad_banners", query_func)
+    return result.data if result.data else []
+
+
 # -------------------------------------------------
 # ADMIN ENDPOINTS
 # -------------------------------------------------
