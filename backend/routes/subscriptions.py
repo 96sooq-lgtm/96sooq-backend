@@ -139,15 +139,30 @@ async def delete_subscription_plan(plan_id: str, admin: dict = Depends(get_curre
     """
     Delete a subscription plan (Admin only)
     """
-    existing = db.select_one("pricing_plans", plan_id)
-    if not existing:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+    try:
+        existing = db.select_one("pricing_plans", plan_id)
+        if not existing:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
 
-    success = db.delete("pricing_plans", plan_id)
-    if not success:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to delete plan")
+        # Check if any user subscriptions reference this plan (FK constraint guard)
+        linked_subs = db.select("user_subscriptions", filters={"plan_id": plan_id})
+        if linked_subs:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Cannot delete: {len(linked_subs)} active subscription(s) reference this plan. Deactivate the plan instead."
+            )
 
-    return {"message": "Plan deleted successfully", "id": plan_id}
+        success = db.delete("pricing_plans", plan_id)
+        if not success:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to delete plan")
+
+        return {"message": "Plan deleted successfully", "id": plan_id}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
 
 
 @admin_router.patch("/{plan_id}", response_model=PricingPlanOut)
