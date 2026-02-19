@@ -86,21 +86,33 @@ class CustomerOut(BaseModel):
 class PricingPlanCreate(BaseModel):
     name_en: str
     name_ar: str
-    type: str # listing, ad, offer
+    type: str  # listing, ad, offer
     price: float
     duration_days: int
-    quota: int = 0 # 0 means unlimited? Or use -1? Let's say 0 is valid for ad/offer without quantity limit? 
-    # Actually, for listings: 1 free, 5 paid. For store: unlimited.
-    # Let's say: quota is the number of listings allowed per month.
-    # If -1, unlimited.
-    target_audience: str = "individual" # individual, store
+    quota: int = 0
+    target_audience: str = "individual"  # individual, store
     description: Optional[str] = None
     features: Optional[dict] = {}
     is_active: bool = True
+    is_best_value: bool = False
+
+class PricingPlanUpdate(BaseModel):
+    name_en: Optional[str] = None
+    name_ar: Optional[str] = None
+    type: Optional[str] = None
+    price: Optional[float] = None
+    duration_days: Optional[int] = None
+    quota: Optional[int] = None
+    target_audience: Optional[str] = None
+    description: Optional[str] = None
+    features: Optional[dict] = None
+    is_active: Optional[bool] = None
+    is_best_value: Optional[bool] = None
 
 class PricingPlanOut(PricingPlanCreate):
     id: str
     created_at: Optional[str] = None
+
 
 # Stores
 class StoreCreate(BaseModel):

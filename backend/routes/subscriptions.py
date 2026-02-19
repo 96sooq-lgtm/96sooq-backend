@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, status, Query
 from typing import List, Optional
 from models import schemas
-from models.schemas import PricingPlanCreate, PricingPlanOut
+from models.schemas import PricingPlanCreate, PricingPlanOut, PricingPlanUpdate
 from db.supabase_client import db
 from utils.auth import get_current_admin
 from uuid import uuid4
@@ -148,6 +148,39 @@ async def delete_subscription_plan(plan_id: str, admin: dict = Depends(get_curre
     success = db.delete("pricing_plans", plan_id)
     if not success:
          raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to delete plan")
+
+@admin_router.patch("/{plan_id}", response_model=PricingPlanOut)
+async def update_subscription_plan(
+    plan_id: str,
+    payload: PricingPlanUpdate,
+    admin: dict = Depends(get_current_admin)
+):
+    """
+    Partially update a subscription plan (Admin only).
+    Useful for toggling is_best_value, is_active, price, etc.
+    """
+    existing = db.select_one("pricing_plans", plan_id)
+    if not existing:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
+
+    # Only send fields that were explicitly provided
+    updates = payload.dict(exclude_none=True)
+    if not updates:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No fields provided to update")
+
+    try:
+        def query_func(table):
+            return table.update(updates).eq("id", plan_id)
+
+        result = db.query("pricing_plans", query_func)
+        updated = result.data[0] if result.data else None
+        if not updated:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update plan")
+        return updated
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 # ----------------------------------------------------------------
 # USER SUBSCRIPTION ENDPOINTS (Manage Purchases)
