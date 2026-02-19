@@ -199,6 +199,7 @@ class ListingOut(BaseModel):
 class UserBoostCreate(BaseModel):
     listing_id: str
     type: str  # carousel, product_listing, top_offers, chat_screen
+    plan_id: Optional[str] = None
     description: Optional[str] = None
 
 # Admin banner: no user_id, no plan_id — admin creates system banners directly

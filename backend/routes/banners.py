@@ -64,11 +64,21 @@ async def boost_listing(
             "status": banner_status,
         }
 
+        # If plan_id provided, attach it and calculate expiry immediately
+        if payload.plan_id:
+            plan = db.select_one("pricing_plans", payload.plan_id)
+            if not plan:
+                raise HTTPException(status_code=404, detail="Plan not found")
+            data["plan_id"] = payload.plan_id
+            duration = plan.get("duration_days", 7)
+            data["expires_at"] = (datetime.utcnow() + timedelta(days=duration)).isoformat()
+
         banner = db.insert("ad_banners", data)
         if not banner:
             raise HTTPException(status_code=500, detail="Failed to create boost")
 
         return banner
+
 
     except HTTPException:
         raise
