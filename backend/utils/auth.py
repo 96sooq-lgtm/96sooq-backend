@@ -9,16 +9,23 @@ from models import schemas
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/admin/login")
 
+CUSTOMER_TOKEN_EXPIRE_DAYS = 90   # Mobile app — token valid until logout
+ADMIN_TOKEN_EXPIRE_DAYS = 1       # Admin panel — short-lived for security
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(days=1)
-    
+        expire = datetime.utcnow() + timedelta(days=ADMIN_TOKEN_EXPIRE_DAYS)
+
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
     return encoded_jwt
+
+def create_customer_token(data: dict) -> str:
+    """Issues a 90-day JWT for mobile app users."""
+    return create_access_token(data, expires_delta=timedelta(days=CUSTOMER_TOKEN_EXPIRE_DAYS))
 
 async def get_current_admin(token: str = Depends(oauth2_scheme)):
     credentials_exception = HTTPException(

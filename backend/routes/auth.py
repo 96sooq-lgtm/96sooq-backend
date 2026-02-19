@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, status, Depends
 from models import schemas
 from db.supabase_client import db
-from utils.auth import create_access_token, get_current_customer
+from utils.auth import create_access_token, create_customer_token, get_current_customer
 from pydantic import BaseModel, EmailStr
 from typing import Optional
 
@@ -70,7 +70,7 @@ async def oauth_check_user(payload: OAuthCheckRequest):
         # User exists - return JWT token
         user = existing[0]
         
-        access_token = create_access_token(data={
+        access_token = create_customer_token(data={
             "sub": user.get("email") or user.get("provider_id"),
             "role": "customer",
             "user_id": user["id"]
@@ -166,7 +166,7 @@ async def oauth_complete_profile(payload: OAuthCompleteProfileRequest):
         )
     
     # Generate JWT token
-    access_token = create_access_token(data={
+    access_token = create_customer_token(data={
         "sub": user["email"],
         "role": "customer",
         "user_id": user["id"]
