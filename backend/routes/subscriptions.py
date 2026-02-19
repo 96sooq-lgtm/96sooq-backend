@@ -283,30 +283,33 @@ async def get_listing_prices(
         user_id = current_user["id"]
         # Check quota
         quota_status = await check_listing_quota(user_id, is_store)
-        
-        filters = {"type": "listing", "is_active": True}
-        
-        # Filter by target audience
+
+        # Fetch plans matching specific audience OR 'everyone'
         target = "store" if is_store else "individual"
-        filters["target_audience"] = target
-        
-        plans = db.select("pricing_plans", filters=filters)
-        
+
+        def query_func(table):
+            return (
+                table.select("*")
+                .eq("type", "listing")
+                .eq("is_active", True)
+                .in_("target_audience", [target, "everyone"])
+            )
+
+        result = db.query("pricing_plans", query_func)
+        plans = result.data if result.data else []
+
         # Filter plans based on quota
-        # If cannot create free, remove free plans (price == 0)
-        # If cannot create paid, remove paid plans? (price > 0)
-        
         eligible_plans = []
         for plan in plans:
             price = plan.get("price", 0)
-            
+
             if price == 0:
                 if quota_status["can_create_free"]:
                     eligible_plans.append(plan)
             else:
                 if quota_status["can_create_paid"]:
                     eligible_plans.append(plan)
-                    
+
         return {
             "quota_status": quota_status,
             "plans": eligible_plans
