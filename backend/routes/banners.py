@@ -217,6 +217,37 @@ async def list_all_banners_admin(
     result = db.query("ad_banners", query_func)
     return result.data if result.data else []
 
+@admin_router.patch("/{banner_id}", response_model=schemas.AdBannerOut)
+async def update_banner_admin(
+    banner_id: str,
+    payload: schemas.AdBannerUpdate,
+):
+    """
+    Admin: Partially update a banner.
+    Only fields provided in the request body will be updated.
+    If duration_days is updated, expires_at is recalculated from now.
+    """
+    banner = db.select_one("ad_banners", banner_id)
+    if not banner:
+        raise HTTPException(status_code=404, detail="Banner not found")
+
+    updates = payload.dict(exclude_none=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="No fields to update")
+
+    # Recalculate expiry if duration_days changed
+    if "duration_days" in updates:
+        updates["expires_at"] = (
+            datetime.utcnow() + timedelta(days=updates["duration_days"])
+        ).isoformat()
+
+    updated = db.update("ad_banners", banner_id, updates)
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to update banner")
+
+    return updated
+
+
 @admin_router.put("/{banner_id}/approve", response_model=schemas.AdBannerOut)
 async def approve_banner(banner_id: str):
     """

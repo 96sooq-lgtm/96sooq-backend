@@ -229,7 +229,9 @@ class AdBannerUpdate(BaseModel):
     type: Optional[str] = None
     image_url: Optional[str] = None
     link_url: Optional[str] = None
-    status: Optional[str] = None # pending_payment, pending_approval, active, rejected, expired
+    duration_days: Optional[int] = None
+    status: Optional[str] = None  # pending_approval, active, rejected, expired
+
 
 class AdBannerOut(BaseModel):
     id: str
