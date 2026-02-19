@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import uvicorn
@@ -66,6 +66,18 @@ app.include_router(banners_router)
 app.include_router(admin_banners_router)
 app.include_router(payments_router)
 
+
+# Explicit OPTIONS handler — ensures preflight is answered without hitting auth middleware.
+# Required for DELETE/PATCH requests that carry an Authorization header.
+@app.options("/{rest_of_path:path}")
+async def global_options_handler(rest_of_path: str, request: Request):
+    from fastapi.responses import Response
+    response = Response()
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Accept"
+    response.headers["Access-Control-Max-Age"] = "600"
+    return response
 
 @app.get("/")
 async def root():
