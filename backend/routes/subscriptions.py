@@ -161,7 +161,15 @@ async def delete_subscription_plan(plan_id: str, admin: dict = Depends(get_curre
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        err = str(e)
+        # Detect PostgreSQL FK violation (error code 23503)
+        if "23503" in err or "foreign key" in err.lower() or "violates foreign key" in err.lower():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This plan cannot be deleted because it is referenced by existing subscriptions or payments. Please deactivate it instead."
+            )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=err)
+
 
 
 
