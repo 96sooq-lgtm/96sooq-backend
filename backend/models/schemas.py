@@ -206,6 +206,7 @@ class UserBoostCreate(BaseModel):
 class AdminBannerCreate(BaseModel):
     name: str
     type: str  # carousel, product_listing, top_offers, chat_screen
+    duration_days: int = 30  # How long the banner stays active
     image_url: Optional[str] = None
     link_url: Optional[str] = None
     description: Optional[str] = None
@@ -241,6 +242,7 @@ class AdBannerOut(BaseModel):
     status: str
     plan_id: Optional[str] = None
     listing_id: Optional[str] = None
+    duration_days: Optional[int] = None
     clicks: int = 0
     expires_at: Optional[datetime] = None
     created_at: Optional[str] = None

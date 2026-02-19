@@ -184,7 +184,8 @@ async def create_banner_admin(
             "description": payload.description,
             "user_id": current_admin["id"],  # Track which admin created it
             "status": "active",
-            "expires_at": (datetime.utcnow() + timedelta(days=30)).isoformat(),
+            "duration_days": payload.duration_days,
+            "expires_at": (datetime.utcnow() + timedelta(days=payload.duration_days)).isoformat(),
         }
 
         banner = db.insert("ad_banners", data)
