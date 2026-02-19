@@ -134,20 +134,21 @@ async def list_subscription_plans(
     result = db.query("pricing_plans", query_func)
     return result.data if result.data else []
 
-@admin_router.delete("/{plan_id}", status_code=status.HTTP_204_NO_CONTENT)
+@admin_router.delete("/{plan_id}", status_code=status.HTTP_200_OK)
 async def delete_subscription_plan(plan_id: str, admin: dict = Depends(get_current_admin)):
     """
     Delete a subscription plan (Admin only)
     """
-    # Check if exists
     existing = db.select_one("pricing_plans", plan_id)
     if not existing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Plan not found")
-        
-    # Delete
+
     success = db.delete("pricing_plans", plan_id)
     if not success:
-         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to delete plan")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to delete plan")
+
+    return {"message": "Plan deleted successfully", "id": plan_id}
+
 
 @admin_router.patch("/{plan_id}", response_model=PricingPlanOut)
 async def update_subscription_plan(
