@@ -182,7 +182,7 @@ async def create_banner_admin(
             "image_url": payload.image_url,
             "link_url": payload.link_url,
             "description": payload.description,
-            "user_id": current_admin["id"],  # Track which admin created it
+            # No user_id — admins are not in app_users; admin banners are system-level
             "status": "active",
             "duration_days": payload.duration_days,
             "expires_at": (datetime.utcnow() + timedelta(days=payload.duration_days)).isoformat(),
