@@ -236,3 +236,33 @@ async def reject_store(store_id: str):
     if not updated:
          raise HTTPException(status_code=404, detail="Store not found or update failed")
     return updated
+
+@admin_router.put("/{store_id}/lock")
+async def lock_store(store_id: str):
+    """
+    Admin: Soft-lock a store. Status → 'locked'.
+    - Hidden from all public listings immediately
+    - Store data is preserved (not deleted)
+    - Owner can still log in but their store won't be visible
+    - Can be unlocked at any time with /unlock
+    """
+    store = db.select_one("stores", store_id)
+    if not store:
+        raise HTTPException(status_code=404, detail="Store not found")
+    updated = db.update("stores", store_id, {"status": "locked"})
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to lock store")
+    return updated
+
+@admin_router.put("/{store_id}/unlock")
+async def unlock_store(store_id: str):
+    """
+    Admin: Unlock a previously locked store. Status → 'active'.
+    """
+    store = db.select_one("stores", store_id)
+    if not store:
+        raise HTTPException(status_code=404, detail="Store not found")
+    updated = db.update("stores", store_id, {"status": "active"})
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to unlock store")
+    return updated
