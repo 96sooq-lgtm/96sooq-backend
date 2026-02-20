@@ -111,11 +111,13 @@ async def list_stores(
     limit: int = Query(20, ge=1, le=100),
     my_stores: bool = Query(False, description="If true, return only the authenticated user's stores (requires Bearer token)"),
     status: Optional[str] = Query(None, description="Filter by status — only applies when my_stores=true"),
+    location_id: Optional[str] = Query(None, description="Filter by governorate or wilayat UUID. If null, returns all stores."),
 ):
     """
     List stores.
     - No auth / my_stores=false → public active stores (paginated)
     - my_stores=true + Bearer token → caller's own stores (all statuses, optional status filter)
+    - location_id → filter by governorate (UUID) or wilayat (resolved to name)
     """
     user_id = None
 
@@ -130,6 +132,18 @@ async def list_stores(
         except Exception:
             raise HTTPException(status_code=401, detail="Invalid or expired token")
 
+    # Resolve location_id → determine if it's a governorate or wilayat
+    governorate_filter = None
+    wilayat_filter = None
+    if location_id:
+        location = db.select_one("locations", location_id)
+        if not location:
+            raise HTTPException(status_code=400, detail="Invalid location_id")
+        if location.get("type") == "state":
+            governorate_filter = location_id          # filter by UUID column
+        elif location.get("type") in ("city", "district"):
+            wilayat_filter = location.get("name_en")  # filter by text name column
+
     def query_func(table):
         query = table.select("*")
         if user_id:
@@ -138,6 +152,12 @@ async def list_stores(
                 query = query.eq("status", status)
         else:
             query = query.eq("status", "active")
+
+        if governorate_filter:
+            query = query.eq("governorate_id", governorate_filter)
+        if wilayat_filter:
+            query = query.eq("wilayat", wilayat_filter)
+
         return query.range(skip, skip + limit - 1).order("created_at", desc=True)
 
     result = db.query("stores", query_func)
