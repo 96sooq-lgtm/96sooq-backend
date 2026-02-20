@@ -87,6 +87,23 @@ async def create_store(
     return store
 
 
+@router.get("/check")
+async def check_user_store(
+    current_user: dict = Depends(get_current_customer)
+):
+    """
+    Check if the authenticated user already has a store.
+    Returns { has_store: bool, store: {...} | null }
+    Frontend uses this when user taps 'Add Listing':
+    - has_store=true  → skip store creation, go directly to listing
+    - has_store=false → show store creation step first
+    """
+    stores = db.select("stores", filters={"user_id": current_user["id"]})
+    if stores:
+        return {"has_store": True, "store": stores[0]}
+    return {"has_store": False, "store": None}
+
+
 @router.get("/", response_model=List[schemas.StoreOut])
 async def list_stores(
     request: Request,
