@@ -235,7 +235,7 @@ class AdBannerUpdate(BaseModel):
 
 class AdBannerOut(BaseModel):
     id: str
-    user_id: str
+    user_id: Optional[str] = None
     name: str
     description: Optional[str] = None
     type: Optional[str] = None
