@@ -38,49 +38,45 @@ async def create_store(
     # Logic: "for a user first store is free if sae user wnated to create mulitple store there will be a rpice"
     # We will just allow creation for now.
     
-    # Validate Governorate (Location)
-    if payload.location_id:
-        location = db.select_one("locations", str(payload.location_id))
-        if not location:
-            raise HTTPException(status_code=400, detail="Invalid location_id (Governorate)")
-        if location.get("type") != "state":
-             raise HTTPException(status_code=400, detail="location_id must be a Governorate (State)")
+    # Validate Governorate
+    if payload.governorate_id:
+        governorate = db.select_one("locations", str(payload.governorate_id))
+        if not governorate:
+            raise HTTPException(status_code=400, detail="Invalid governorate_id")
+        if governorate.get("type") != "state":
+            raise HTTPException(status_code=400, detail="governorate_id must be a Governorate (State)")
 
-    # Validate Place (City/Wilayat)
-    place_name = None
-    if payload.place_id:
-        city = db.select_one("locations", str(payload.place_id))
-        if not city:
-             raise HTTPException(status_code=400, detail="Invalid place_id (City)")
-        if city.get("type") != "city":
-             raise HTTPException(status_code=400, detail="place_id must be a City (Wilayat)")
-        
-        # Check if city belongs to governorate
-        if city.get("parent_id") != str(payload.location_id):
-             raise HTTPException(status_code=400, detail="City does not belong to the selected Governorate")
-             
-        place_name = city.get("name_en") # Storing English name for now in the text column
+    # Validate Wilayat
+    wilayat_name = None
+    if payload.wilayat_id:
+        wilayat = db.select_one("locations", str(payload.wilayat_id))
+        if not wilayat:
+            raise HTTPException(status_code=400, detail="Invalid wilayat_id")
+        if wilayat.get("type") != "city":
+            raise HTTPException(status_code=400, detail="wilayat_id must be a Wilayat (City)")
 
-    # Convert UUIDs to strings for DB
+        # Check wilayat belongs to the selected governorate
+        if wilayat.get("parent_id") != str(payload.governorate_id):
+            raise HTTPException(status_code=400, detail="Wilayat does not belong to the selected Governorate")
+
+        wilayat_name = wilayat.get("name_en")
+
+    # Build DB payload
     data = payload.dict()
-    data["location_id"] = str(payload.location_id)
-    data["place_id"] = str(payload.place_id)
+    data["governorate_id"] = str(payload.governorate_id)
+    data["wilayat_id"] = str(payload.wilayat_id)
     if data.get("plan_id"):
         data["plan_id"] = str(payload.plan_id) if payload.plan_id else None
-        
+
     data["user_id"] = user_id
-    
-    # Map name_en to name in DB
     data["name"] = payload.name_en
-    # location_id is already in payload and matches DB column
-    
-    # Map place_id to place (Text)
-    if place_name:
-        data["place"] = place_name
-    
-    # Remove fields not in DB or mapped
-    if "place_id" in data: del data["place_id"]
-    if "name_en" in data: del data["name_en"]
+
+    if wilayat_name:
+        data["wilayat"] = wilayat_name
+
+    # Remove schema-only fields not stored directly
+    data.pop("name_en", None)
+    data.pop("wilayat_id", None)
     
     data["status"] = "active" # Auto-approve stores as per new requirement
 

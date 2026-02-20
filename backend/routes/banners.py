@@ -51,8 +51,8 @@ async def boost_listing(
         images = listing.get("images") or []
         image_url = images[0] if images else None
 
-        # Determine status based on listing state
-        banner_status = "active" if listing.get("status") == "active" else "pending_approval"
+        # User banners are always active immediately — no admin approval needed
+        banner_status = "active"
 
         data = {
             "user_id": user_id,

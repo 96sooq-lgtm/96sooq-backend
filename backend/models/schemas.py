@@ -121,32 +121,29 @@ class StoreCreate(BaseModel):
     name_en: str
     name_ar: str
     description: Optional[str] = None
-    location_id: UUID # UUID for Governorate
-    place_id: UUID # UUID for City (Wilayat)
-    logo_url: Optional[str] = None
-    cover_image_url: Optional[str] = None
-    plan_id: Optional[str] = None # Optional for creation (e.g. free trial or select later)
+    governorate_id: UUID  # UUID for Governorate (State)
+    wilayat_id: UUID      # UUID for Wilayat (City)
+    logo: Optional[str] = None
+    plan_id: Optional[str] = None
 
 class StoreUpdate(BaseModel):
     name_en: Optional[str] = None
     name_ar: Optional[str] = None
     description: Optional[str] = None
-    location_id: Optional[str] = None
-    place_id: Optional[str] = None
-    logo_url: Optional[str] = None
-    cover_image_url: Optional[str] = None
+    governorate_id: Optional[str] = None
+    wilayat_id: Optional[str] = None
+    logo: Optional[str] = None
     status: Optional[str] = None
 
 class StoreOut(BaseModel):
     id: str
     user_id: str
-    name: str # Retaining for backward compatibility or mapping
+    name: str
     name_ar: Optional[str] = None
     description: Optional[str] = None
-    location_id: Optional[str] = None
-    place: Optional[str] = None
-    logo_url: Optional[str] = None
-    cover_image_url: Optional[str] = None
+    governorate_id: Optional[str] = None
+    wilayat: Optional[str] = None
+    logo: Optional[str] = None
     status: str
     plan_id: Optional[str] = None
     expires_at: Optional[datetime] = None
