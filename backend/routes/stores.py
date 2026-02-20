@@ -1,7 +1,7 @@
-from fastapi import APIRouter, HTTPException, status, Depends, Query
+from fastapi import APIRouter, HTTPException, status, Depends, Query, Request
 from models import schemas
 from db.supabase_client import db
-from utils.auth import get_current_customer, get_current_admin
+from utils.auth import get_current_customer, get_current_admin, decode_customer_token
 from typing import List, Optional
 
 # Public/User Router
@@ -89,29 +89,43 @@ async def create_store(
 
 @router.get("/", response_model=List[schemas.StoreOut])
 async def list_stores(
+    request: Request,
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
-    user_id: Optional[str] = None
+    my_stores: bool = Query(False, description="If true, return only the authenticated user's stores (requires Bearer token)"),
+    status: Optional[str] = Query(None, description="Filter by status — only applies when my_stores=true"),
 ):
     """
-    List active stores.
-    If user_id is provided, list user's stores (even if pending/rejected for that user? 
-    Usually public listing only shows active. User's own view should be different).
+    List stores.
+    - No auth / my_stores=false → public active stores (paginated)
+    - my_stores=true + Bearer token → caller's own stores (all statuses, optional status filter)
     """
+    user_id = None
+
+    if my_stores:
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Bearer token required for my_stores")
+        token = auth_header.split(" ", 1)[1]
+        try:
+            current_user = decode_customer_token(token)
+            user_id = current_user["id"]
+        except Exception:
+            raise HTTPException(status_code=401, detail="Invalid or expired token")
+
     def query_func(table):
         query = table.select("*")
-        
         if user_id:
-             # If filtering by user, return all statuses (so they can see their pending stores)
             query = query.eq("user_id", user_id)
+            if status:
+                query = query.eq("status", status)
         else:
-            # Public view: only active stores
             query = query.eq("status", "active")
-            
         return query.range(skip, skip + limit - 1).order("created_at", desc=True)
 
     result = db.query("stores", query_func)
     return result.data if result.data else []
+
 
 
 @router.get("/{store_id}", response_model=schemas.StoreOut)

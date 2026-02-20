@@ -77,3 +77,34 @@ async def get_current_customer(token: str = Depends(oauth2_scheme)):
         raise credentials_exception
         
     return user[0]
+
+
+def decode_customer_token(token: str) -> dict:
+    """
+    Decode and validate a customer JWT token string.
+    Returns the app_user dict. Raises HTTPException on failure.
+    Used for optional auth patterns where Depends() can't be used.
+    """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or expired token",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        sub: str = payload.get("sub")
+        role: str = payload.get("role")
+        if sub is None or role != "customer":
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+
+    if "@" in sub:
+        user = db.select("app_users", filters={"email": sub})
+    else:
+        user = db.select("app_users", filters={"phone_number": sub})
+
+    if not user:
+        raise credentials_exception
+
+    return user[0]
