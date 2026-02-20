@@ -124,6 +124,7 @@ class StoreCreate(BaseModel):
     governorate_id: UUID  # UUID for Governorate (State)
     wilayat_id: UUID      # UUID for Wilayat (City)
     logo: Optional[str] = None
+    store_number: Optional[str] = None  # Omani phone number e.g. +96891234567
     plan_id: Optional[str] = None
 
 class StoreUpdate(BaseModel):
@@ -133,6 +134,7 @@ class StoreUpdate(BaseModel):
     governorate_id: Optional[str] = None
     wilayat_id: Optional[str] = None
     logo: Optional[str] = None
+    store_number: Optional[str] = None
     status: Optional[str] = None
 
 class StoreOut(BaseModel):
@@ -144,6 +146,7 @@ class StoreOut(BaseModel):
     governorate_id: Optional[str] = None
     wilayat: Optional[str] = None
     logo: Optional[str] = None
+    store_number: Optional[str] = None
     status: str
     plan_id: Optional[str] = None
     expires_at: Optional[datetime] = None
