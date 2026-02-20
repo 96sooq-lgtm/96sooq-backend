@@ -117,6 +117,13 @@ class PricingPlanOut(PricingPlanCreate):
 
 
 # Stores
+class StoreListOut(BaseModel):
+    id: str
+    name: str
+    name_ar: Optional[str] = None
+    logo: Optional[str] = None
+
+
 class StoreCreate(BaseModel):
     name_en: str
     name_ar: str

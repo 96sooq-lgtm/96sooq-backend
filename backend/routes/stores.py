@@ -104,7 +104,7 @@ async def check_user_store(
     return {"has_store": False, "store": None}
 
 
-@router.get("/", response_model=List[schemas.StoreOut])
+@router.get("/", response_model=List[schemas.StoreListOut])
 async def list_stores(
     request: Request,
     skip: int = Query(0, ge=0),
@@ -145,7 +145,7 @@ async def list_stores(
             wilayat_filter = location.get("name_en")  # filter by text name column
 
     def query_func(table):
-        query = table.select("*")
+        query = table.select("id, name, name_ar, logo")
         if user_id:
             query = query.eq("user_id", user_id)
             if status:
