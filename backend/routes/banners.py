@@ -162,6 +162,29 @@ async def get_home_banners(
     return result.data if result.data else []
 
 
+@router.get("/featured", response_model=schemas.AdBannerOut)
+async def get_featured_banner():
+    """
+    Public — no auth required.
+    Returns the single latest active admin-created banner.
+    Use this endpoint to display the main promotional banner in the app.
+    """
+    def query_func(table):
+        return (
+            table.select("*")
+            .eq("status", "active")
+            .is_("listing_id", "null")  # admin banners only
+            .order("created_at", desc=True)
+            .limit(1)
+        )
+
+    result = db.query("ad_banners", query_func)
+    if not result.data:
+        raise HTTPException(status_code=404, detail="No active banner found")
+    return result.data[0]
+
+
+
 # -------------------------------------------------
 # ADMIN ENDPOINTS
 # -------------------------------------------------
