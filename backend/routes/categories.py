@@ -110,20 +110,13 @@ async def create_category(payload: schemas.CategoryCreate):
                     "required": False
                 },
                 {
-                    "name": "image",
-                    "type": "file",
-                    "label_en": "Image",
-                    "label_ar": "صورة",
+                    "name": "images",
+                    "type": "multi_file",
+                    "label_en": "Images",
+                    "label_ar": "الصور",
                     "required": False,
-                    "accept": "image/*"
-                },
-                {
-                    "name": "video",
-                    "type": "file",
-                    "label_en": "Video",
-                    "label_ar": "فيديو",
-                    "required": False,
-                    "accept": "video/*"
+                    "accept": "image/*",
+                    "multiple": True
                 }
             ]
             data["attributes_schema"] = default_attributes
