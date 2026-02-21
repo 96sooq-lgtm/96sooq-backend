@@ -58,7 +58,7 @@ async def create_offer(payload: schemas.OfferCreate):
         "title": payload.title,
         "title_ar": payload.title_ar,
         "description": payload.description,
-        "media": [m.dict() for m in payload.media],
+        "images": payload.images,
         "status": "active",
     }
 
@@ -100,9 +100,9 @@ async def update_offer(offer_id: str, payload: schemas.OfferUpdate):
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
 
-    # Serialize media list if provided
-    if "media" in updates:
-        updates["media"] = [m if isinstance(m, dict) else m.dict() for m in updates["media"]]
+    # Serialize images list if provided
+    if "images" in updates and updates["images"] is None:
+        updates.pop("images")
 
     updated = db.update("offers", offer_id, updates)
     if not updated:

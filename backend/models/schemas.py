@@ -240,22 +240,18 @@ class AdBannerUpdate(BaseModel):
     status: Optional[str] = None  # pending_approval, active, rejected, expired
 
 
-# Offers (Admin promotional banners with multiple media)
-class OfferMedia(BaseModel):
-    url: str
-    type: str  # 'image' or 'video'
-
+# Offers (Admin promotional banners with multiple images)
 class OfferCreate(BaseModel):
     title: str
     title_ar: Optional[str] = None
     description: Optional[str] = None
-    media: List[OfferMedia]  # one or more image/video URLs
+    images: List[str]  # list of image URLs
 
 class OfferUpdate(BaseModel):
     title: Optional[str] = None
     title_ar: Optional[str] = None
     description: Optional[str] = None
-    media: Optional[List[OfferMedia]] = None
+    images: Optional[List[str]] = None
     status: Optional[str] = None
 
 class OfferOut(BaseModel):
@@ -263,7 +259,7 @@ class OfferOut(BaseModel):
     title: str
     title_ar: Optional[str] = None
     description: Optional[str] = None
-    media: Optional[List[dict]] = []  # [{url, type}]
+    images: Optional[List[str]] = []
     status: str
     created_at: Optional[str] = None
 
