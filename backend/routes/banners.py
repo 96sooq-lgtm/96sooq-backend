@@ -181,6 +181,24 @@ async def get_featured_banners():
     return result.data if result.data else []
 
 
+@router.get("/offers", response_model=List[schemas.AdBannerOut])
+async def get_offers():
+    """
+    Public — no auth required.
+    Returns all active offer-type admin banners (multiple images each).
+    """
+    def query_func(table):
+        return (
+            table.select("*")
+            .eq("status", "active")
+            .eq("type", "offers")
+            .order("created_at", desc=True)
+        )
+
+    result = db.query("ad_banners", query_func)
+    return result.data if result.data else []
+
+
 
 # -------------------------------------------------
 # ADMIN ENDPOINTS
@@ -200,9 +218,9 @@ async def create_banner_admin(
             "name": payload.name,
             "type": payload.type,
             "image_url": payload.image_url,
+            "images": payload.images or [],
             "link_url": payload.link_url,
             "description": payload.description,
-            # No user_id — admins are not in app_users; admin banners are system-level
             "status": "active",
             "duration_days": payload.duration_days,
             "expires_at": (datetime.utcnow() + timedelta(days=payload.duration_days)).isoformat(),

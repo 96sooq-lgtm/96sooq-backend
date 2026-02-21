@@ -209,12 +209,12 @@ class UserBoostCreate(BaseModel):
     plan_id: Optional[str] = None
     description: Optional[str] = None
 
-# Admin banner: no user_id, no plan_id — admin creates system banners directly
 class AdminBannerCreate(BaseModel):
     name: str
-    type: str  # carousel, product_listing, top_offers, chat_screen
-    duration_days: int = 30  # How long the banner stays active
-    image_url: Optional[str] = None
+    type: str  # carousel, offers, product_listing, top_offers, chat_screen
+    duration_days: int = 30
+    image_url: Optional[str] = None   # single image (for carousel type)
+    images: Optional[List[str]] = []  # multiple images (for offers type)
     link_url: Optional[str] = None
     description: Optional[str] = None
 
@@ -240,29 +240,6 @@ class AdBannerUpdate(BaseModel):
     status: Optional[str] = None  # pending_approval, active, rejected, expired
 
 
-# Offers (Admin promotional banners with multiple images)
-class OfferCreate(BaseModel):
-    title: str
-    title_ar: Optional[str] = None
-    description: Optional[str] = None
-    images: List[str]  # list of image URLs
-
-class OfferUpdate(BaseModel):
-    title: Optional[str] = None
-    title_ar: Optional[str] = None
-    description: Optional[str] = None
-    images: Optional[List[str]] = None
-    status: Optional[str] = None
-
-class OfferOut(BaseModel):
-    id: str
-    title: str
-    title_ar: Optional[str] = None
-    description: Optional[str] = None
-    images: Optional[List[str]] = []
-    status: str
-    created_at: Optional[str] = None
-
 
 class AdBannerOut(BaseModel):
     id: str
@@ -271,6 +248,7 @@ class AdBannerOut(BaseModel):
     description: Optional[str] = None
     type: Optional[str] = None
     image_url: Optional[str] = None
+    images: Optional[List[str]] = []  # multi-image for offers type
     link_url: Optional[str] = None
     status: str
     plan_id: Optional[str] = None
