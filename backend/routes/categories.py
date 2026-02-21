@@ -365,6 +365,51 @@ async def delete_category(category_id: str):
     return {"message": "Category deleted successfully", "id": category_id}
 
 
+@admin_router.patch("/{category_id}/attributes", response_model=schemas.CategoryOut)
+async def update_subcategory_attributes(
+    category_id: str,
+    attributes_schema: list
+):
+    """
+    Admin: Replace the full attributes_schema of a subcategory.
+    Send a complete list of attribute objects.
+    Each attribute: { name, type, label_en, label_ar, required, ... }
+    """
+    category = db.select_one("categories", category_id)
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
+
+    updated = db.update("categories", category_id, {"attributes_schema": attributes_schema})
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to update attributes")
+
+    return updated
+
+
+@admin_router.delete("/{category_id}/attributes/{attribute_name}", response_model=schemas.CategoryOut)
+async def delete_subcategory_attribute(category_id: str, attribute_name: str):
+    """
+    Admin: Remove a single attribute from a subcategory's attributes_schema by its name.
+    Example: DELETE /api/admin/categories/{id}/attributes/price
+    """
+    category = db.select_one("categories", category_id)
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
+
+    current_schema = category.get("attributes_schema") or []
+    new_schema = [attr for attr in current_schema if attr.get("name") != attribute_name]
+
+    if len(new_schema) == len(current_schema):
+        raise HTTPException(status_code=404, detail=f"Attribute '{attribute_name}' not found")
+
+    updated = db.update("categories", category_id, {"attributes_schema": new_schema})
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to delete attribute")
+
+    return updated
+
+
+
 # -------------------------------------------------
 # USER/PUBLIC ENDPOINTS
 # -------------------------------------------------
