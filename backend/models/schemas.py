@@ -38,6 +38,17 @@ class ChangePasswordRequest(BaseModel):
 
 
 # Category schemas
+# Attribute definition for subcategory dynamic fields
+class AttributeDefinition(BaseModel):
+    name: str                           # field key, e.g. "fuel"
+    label_en: str                       # English label shown in UI
+    label_ar: Optional[str] = None      # Arabic label
+    type: str                           # "radio" | "dropdown" | "text_field"
+    options: Optional[List[str]] = []   # choices for radio/dropdown e.g. ["Petrol","Diesel"]
+    required: bool = False
+    status: str = "active"             # "active" | "inactive"
+
+
 class CategoryCreate(BaseModel):
 	name_en: str
 	name_ar: str

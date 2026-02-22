@@ -3,7 +3,7 @@ from models import schemas
 from db.supabase_client import db
 from utils.auth import get_current_admin
 from utils.storage import s3_client
-from typing import Optional
+from typing import Optional, List
 import json
 
 # Admin Router
@@ -358,21 +358,59 @@ async def delete_category(category_id: str):
     return {"message": "Category deleted successfully", "id": category_id}
 
 
-@admin_router.patch("/{category_id}/attributes", response_model=schemas.CategoryOut)
-async def update_subcategory_attributes(
+@admin_router.post("/{category_id}/attributes", response_model=schemas.CategoryOut, status_code=status.HTTP_201_CREATED)
+async def add_subcategory_attribute(
     category_id: str,
-    attributes_schema: list
+    attribute: schemas.AttributeDefinition
 ):
     """
-    Admin: Replace the full attributes_schema of a subcategory.
-    Send a complete list of attribute objects.
-    Each attribute: { name, type, label_en, label_ar, required, ... }
+    Admin: Add a single attribute to a subcategory's schema.
+    Appends to the existing list — does NOT replace everything.
+    Use this from the 'Add Attributes' screen.
+
+    Payload example:
+    {
+      "name": "fuel",
+      "label_en": "Fuel",
+      "label_ar": "الوقود",
+      "type": "dropdown",
+      "options": ["Petrol", "Diesel", "Electric"],
+      "required": false,
+      "status": "active"
+    }
     """
     category = db.select_one("categories", category_id)
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")
 
-    updated = db.update("categories", category_id, {"attributes_schema": attributes_schema})
+    current_schema = category.get("attributes_schema") or []
+
+    # Prevent duplicate attribute names
+    if any(a.get("name") == attribute.name for a in current_schema):
+        raise HTTPException(status_code=400, detail=f"Attribute '{attribute.name}' already exists")
+
+    current_schema.append(attribute.dict())
+    updated = db.update("categories", category_id, {"attributes_schema": current_schema})
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to add attribute")
+
+    return updated
+
+
+@admin_router.patch("/{category_id}/attributes", response_model=schemas.CategoryOut)
+async def replace_subcategory_attributes(
+    category_id: str,
+    attributes: List[schemas.AttributeDefinition]
+):
+    """
+    Admin: Replace the FULL attributes_schema of a subcategory.
+    Use this to set all attributes at once.
+    """
+    category = db.select_one("categories", category_id)
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
+
+    updated = db.update("categories", category_id, {"attributes_schema": [a.dict() for a in attributes]})
     if not updated:
         raise HTTPException(status_code=500, detail="Failed to update attributes")
 
@@ -382,8 +420,8 @@ async def update_subcategory_attributes(
 @admin_router.delete("/{category_id}/attributes/{attribute_name}", response_model=schemas.CategoryOut)
 async def delete_subcategory_attribute(category_id: str, attribute_name: str):
     """
-    Admin: Remove a single attribute from a subcategory's attributes_schema by its name.
-    Example: DELETE /api/admin/categories/{id}/attributes/price
+    Admin: Remove a single attribute by its name.
+    Example: DELETE /api/admin/categories/{id}/attributes/fuel
     """
     category = db.select_one("categories", category_id)
     if not category:
