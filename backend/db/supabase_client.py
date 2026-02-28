@@ -64,6 +64,17 @@ class SupabaseDB:
         client = cls.get_client()
         response = client.table(table).select(columns).eq("id", id).execute()
         return response.data[0] if response.data else None
+
+    @classmethod
+    def select_in(cls, table: str, column: str, values: list, columns: str = "*") -> List[Dict[str, Any]]:
+        """Select records where column value is IN a list of values.
+        Uses a single query instead of N individual selects.
+        """
+        if not values:
+            return []
+        client = cls.get_client()
+        response = client.table(table).select(columns).in_(column, values).execute()
+        return response.data if response.data else []
     
     @classmethod
     def update(cls, table: str, id: str, data: Dict[str, Any]) -> Dict[str, Any]:

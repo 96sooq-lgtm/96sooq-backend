@@ -19,6 +19,7 @@ from routes.banners import router as banners_router
 from routes.banners import admin_router as admin_banners_router
 from routes.locations import router as locations_router
 from routes.payments import router as payments_router
+from routes.favorites import router as favorites_router
 
 
 # Load settings
@@ -66,6 +67,7 @@ app.include_router(user_subscriptions_router)
 app.include_router(banners_router)
 app.include_router(admin_banners_router)
 app.include_router(payments_router)
+app.include_router(favorites_router)
 
 
 

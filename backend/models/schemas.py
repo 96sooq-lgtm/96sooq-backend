@@ -169,6 +169,43 @@ class StoreOut(BaseModel):
     plan_id: Optional[str] = None
     expires_at: Optional[datetime] = None
     created_at: Optional[str] = None
+    average_rating: Optional[float] = 0.0
+    total_reviews: Optional[int] = 0
+
+# Store Reviews
+class StoreReviewCreate(BaseModel):
+    rating: int = Field(..., ge=1, le=5)
+    comment: Optional[str] = None
+
+class StoreReviewOut(BaseModel):
+    id: str
+    reviewer_id: str
+    store_id: str
+    rating: int
+    comment: Optional[str] = None
+    reviewer_name: Optional[str] = None
+    created_at: Optional[str] = None
+
+class StoreReviewsResponse(BaseModel):
+    reviews: List[StoreReviewOut]
+    average_rating: float
+    total_reviews: int
+    rating_breakdown: Dict[str, int]  # {"5": 488, "4": 74, "3": 14, "2": 0, "1": 0}
+    page: int
+    limit: int
+    pages: int
+
+class AdminStoreOut(StoreOut):
+    owner_name: Optional[str] = None
+    owner_phone: Optional[str] = None
+    owner_email: Optional[str] = None
+
+class AdminStoreListResponse(BaseModel):
+    stores: List[AdminStoreOut]
+    total: int
+    page: int
+    limit: int
+    pages: int
 
 # Listings
 class ListingCreate(BaseModel):
@@ -212,6 +249,19 @@ class ListingOut(BaseModel):
     location_id: Optional[str] = None
     location_details: Optional[dict] = None # Populated with location name/type
     created_at: Optional[str] = None
+
+# Favorites
+class FavoriteListingOut(ListingOut):
+    images: Optional[List[str]] = []
+    favorited_at: Optional[str] = None
+
+class FavoriteListResponse(BaseModel):
+    listings: List[FavoriteListingOut]
+    total: int
+    page: int
+    limit: int
+    pages: int
+
 # Ad Banners
 # User boost: minimal payload — all other fields auto-derived from listing + JWT
 class UserBoostCreate(BaseModel):

@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, status, Query, Depends
 from models import schemas
 from db.supabase_client import db
 from utils.auth import get_current_admin
-from utils.storage import s3_client
+from utils.helpers import get_viewable_image_url
 from typing import Optional, List
 import json
 
@@ -18,31 +18,6 @@ user_router = APIRouter(
     prefix="/api/categories",
     tags=["categories"]
 )
-
-# -------------------------------------------------
-# HELPER FUNCTIONS
-# -------------------------------------------------
-
-def get_viewable_image_url(image_url_or_path: Optional[str]) -> Optional[str]:
-    """
-    Convert image URL or file path to a viewable URL.
-    - If it's already a full URL (http/https), return as-is
-    - If it's a file_path (starts with folder name), generate presigned URL
-    """
-    if not image_url_or_path:
-        return None
-    
-    # If it's already a full URL, return as-is
-    if image_url_or_path.startswith(('http://', 'https://')):
-        return image_url_or_path
-    
-    # If it's a file_path, generate presigned URL for viewing
-    if s3_client:
-        presigned_url = s3_client.generate_presigned_url(image_url_or_path, expiration=3600)
-        return presigned_url if presigned_url else image_url_or_path
-    
-    return image_url_or_path
-
 
 # -------------------------------------------------
 # ADMIN ENDPOINTS
@@ -200,17 +175,18 @@ async def list_all_subcategories(
     result = db.query("categories", query_func)
     subcategories = result.data if result.data else []
 
-    # Enrich with parent category names
-    parent_cache: dict = {}
+    # Batch fetch parent categories — 1 query instead of N
+    parent_ids = list({c["parent_id"] for c in subcategories if c.get("parent_id")})
+    parents = db.select_in("categories", "id", parent_ids) if parent_ids else []
+    parent_cache = {p["id"]: p for p in parents}
+
     for category in subcategories:
         if category.get("image_url"):
             category["image_url"] = get_viewable_image_url(category["image_url"])
 
         pid = category.get("parent_id")
         if pid:
-            if pid not in parent_cache:
-                parent_cache[pid] = db.select_one("categories", pid) or {}
-            parent = parent_cache[pid]
+            parent = parent_cache.get(pid, {})
             category["parent_name_en"] = parent.get("name_en")
             category["parent_name_ar"] = parent.get("name_ar")
 

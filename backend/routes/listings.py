@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, status, Depends, Query
 from models import schemas
 from db.supabase_client import db
 from utils.auth import get_current_customer, get_current_admin
-from utils.storage import s3_client
+from utils.helpers import get_viewable_image_url, batch_listing_images, batch_locations
 from typing import List, Optional
 from datetime import datetime
 
@@ -27,42 +27,6 @@ def is_leaf_category(category_id: str) -> bool:
     """Check if a category is a leaf node."""
     children = db.select("categories", filters={"parent_id": category_id})
     return not bool(children)
-
-def get_viewable_image_url(image_url_or_path: Optional[str]) -> Optional[str]:
-    """
-    Convert image URL or file path to a viewable URL.
-    - If it's already a full URL (http/https), return as-is
-    - If it's a file_path (starts with folder name), generate presigned URL
-    """
-    if not image_url_or_path:
-        return None
-    
-    # If it's already a full URL, return as-is
-    if image_url_or_path.startswith(('http://', 'https://')):
-        return image_url_or_path
-    
-    # If it's a file_path, generate presigned URL for viewing
-    if s3_client:
-        presigned_url = s3_client.generate_presigned_url(image_url_or_path, expiration=3600)
-        return presigned_url if presigned_url else image_url_or_path
-    
-    return image_url_or_path
-
-def get_listing_images(listing_id: str) -> List[dict]:
-    """Fetch listing images and make URLs viewable."""
-    images = db.select("listing_images", filters={"listing_id": listing_id})
-    if not images:
-        return []
-    
-    # Sort by display_order
-    images = sorted(images, key=lambda x: x.get("display_order", 0))
-    
-    # Make all image URLs viewable
-    for img in images:
-        if img.get("image_url"):
-            img["image_url"] = get_viewable_image_url(img["image_url"])
-    
-    return images
 
 # -------------------------------------------------
 # PUBLIC / CUSTOMER ENDPOINTS
@@ -150,15 +114,8 @@ async def create_listing(
     # Force store_id if store user
     if is_store_user:
         data["store_id"] = store_id
-        # Plan logic for Store Listings? currently open/unlimited or bound to store plan expiry?
-        # Leaving as-is for now.
     else:
-        # User Listing
         data["store_id"] = None
-        # If free listing, ensure plan_id is None
-        if is_first_listing and not payload.plan_id:
-            data["plan_id"] = None
-            data["plan_expires_at"] = None
     
     # 5. Create Listing
     listing = db.insert("listings", data)
@@ -167,15 +124,13 @@ async def create_listing(
         
     listing_id = listing["id"]
     
-    # 6. Handle Images (MVP: Simple Insert Loop)
+    # 6. Handle Images — batch insert in one query
     if payload.images:
-        for idx, img_url in enumerate(payload.images):
-            db.insert("listing_images", {
-                "listing_id": listing_id,
-                "image_url": img_url,
-                "is_main": (idx == 0),
-                "display_order": idx
-            })
+        image_records = [
+            {"listing_id": listing_id, "image_url": url, "is_main": (i == 0), "display_order": i}
+            for i, url in enumerate(payload.images)
+        ]
+        db.insert_many("listing_images", image_records)
             
     return listing
 
@@ -210,14 +165,21 @@ async def list_listings(
     result = db.query("listings", query_func)
     listings = result.data if result.data else []
     
-    # Add viewable images and location details
-    for listing in listings:
-        listing["images"] = get_listing_images(listing["id"])
-        
-        if listing.get("location_id"):
-            loc = db.select_one("locations", listing["location_id"])
-            if loc:
-                listing["location_details"] = loc
+    if listings:
+        # Batch fetch images — 1 query instead of N
+        listing_ids = [l["id"] for l in listings]
+        images_map = batch_listing_images(listing_ids)
+
+        # Batch fetch locations — 1 query instead of N
+        location_ids = list({l["location_id"] for l in listings if l.get("location_id")})
+        locations_map = batch_locations(location_ids)
+
+        for listing in listings:
+            listing["images"] = images_map.get(listing["id"], [])
+            if listing.get("location_id"):
+                loc = locations_map.get(listing["location_id"])
+                if loc:
+                    listing["location_details"] = loc
 
     return listings
 
@@ -228,8 +190,9 @@ async def get_listing(listing_id: str):
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     
-    # Add viewable images for e-commerce display
-    listing["images"] = get_listing_images(listing_id)
+    # Fetch images
+    images_map = batch_listing_images([listing_id])
+    listing["images"] = images_map.get(listing_id, [])
     
     if listing.get("location_id"):
         loc = db.select_one("locations", listing["location_id"])
@@ -303,9 +266,12 @@ async def list_all_listings_admin(
     result = db.query("listings", query_func)
     listings = result.data if result.data else []
     
-    # Add viewable images to each listing for e-commerce display
-    for listing in listings:
-        listing["images"] = get_listing_images(listing["id"])
+    # Batch fetch images — 1 query instead of N
+    if listings:
+        listing_ids = [l["id"] for l in listings]
+        images_map = batch_listing_images(listing_ids)
+        for listing in listings:
+            listing["images"] = images_map.get(listing["id"], [])
     
     return listings
 

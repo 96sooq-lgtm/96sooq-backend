@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, status, Depends, Query, Request
 from models import schemas
 from db.supabase_client import db
 from utils.auth import get_current_customer, get_current_admin, decode_customer_token
+from utils.helpers import batch_listing_images, batch_user_info
 from typing import List, Optional
 
 # Public/User Router
@@ -164,12 +165,22 @@ async def list_stores(
     return result.data if result.data else []
 
 
-
 @router.get("/{store_id}", response_model=schemas.StoreOut)
 async def get_store(store_id: str):
     store = db.select_one("stores", store_id)
     if not store:
         raise HTTPException(status_code=404, detail="Store not found")
+
+    # Add average rating and review count for store header
+    all_reviews = db.select("store_reviews", filters={"store_id": store_id})
+    if all_reviews:
+        ratings = [r["rating"] for r in all_reviews]
+        store["average_rating"] = round(sum(ratings) / len(ratings), 1)
+        store["total_reviews"] = len(ratings)
+    else:
+        store["average_rating"] = 0.0
+        store["total_reviews"] = 0
+
     return store
 
 
@@ -188,8 +199,6 @@ async def update_store(
         raise HTTPException(status_code=403, detail="Not authorized to update this store")
         
     update_data = payload.dict(exclude_unset=True)
-    # User cannot change status directly via this endpoint usually, 
-    # but maybe they can "close" it? For now, ignore status updates from user.
     if "status" in update_data:
         del update_data["status"]
         
@@ -201,26 +210,216 @@ async def update_store(
 
 
 # -------------------------------------------------
+# STORE REVIEWS
+# -------------------------------------------------
+
+@router.post("/{store_id}/reviews", response_model=schemas.StoreReviewOut, status_code=status.HTTP_201_CREATED)
+async def create_store_review(
+    store_id: str,
+    payload: schemas.StoreReviewCreate,
+    current_user: dict = Depends(get_current_customer)
+):
+    """
+    Submit a review for a store. Rating 1-5 with optional comment.
+    - User cannot review their own store
+    - User can only submit one review per store
+    """
+    user_id = current_user["id"]
+
+    # Verify store exists
+    store = db.select_one("stores", store_id)
+    if not store:
+        raise HTTPException(status_code=404, detail="Store not found")
+
+    # Prevent self-review
+    if store["user_id"] == user_id:
+        raise HTTPException(status_code=400, detail="You cannot review your own store")
+
+    # Check for existing review
+    existing = db.select("store_reviews", filters={
+        "reviewer_id": user_id,
+        "store_id": store_id,
+    })
+    if existing:
+        raise HTTPException(status_code=400, detail="You have already reviewed this store")
+
+    review = db.insert("store_reviews", {
+        "reviewer_id": user_id,
+        "store_id": store_id,
+        "rating": payload.rating,
+        "comment": payload.comment,
+    })
+    if not review:
+        raise HTTPException(status_code=500, detail="Failed to submit review")
+
+    # Attach reviewer name
+    reviewer = db.select_one("app_users", user_id, columns="name")
+    review["reviewer_name"] = reviewer.get("name") if reviewer else None
+
+    return review
+
+
+@router.get("/{store_id}/reviews", response_model=schemas.StoreReviewsResponse)
+async def get_store_reviews(
+    store_id: str,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+):
+    """
+    Get all reviews for a store with rating breakdown.
+    Used for the Reviews tab in store detail page.
+    """
+    import math
+
+    # Verify store exists
+    store = db.select_one("stores", store_id)
+    if not store:
+        raise HTTPException(status_code=404, detail="Store not found")
+
+    # Get ALL reviews for rating calculation
+    all_reviews = db.select("store_reviews", filters={"store_id": store_id})
+    all_reviews = all_reviews or []
+    total = len(all_reviews)
+
+    # Calculate rating breakdown
+    rating_breakdown = {"5": 0, "4": 0, "3": 0, "2": 0, "1": 0}
+    for r in all_reviews:
+        key = str(r.get("rating", 0))
+        if key in rating_breakdown:
+            rating_breakdown[key] += 1
+
+    # Average rating
+    if total > 0:
+        avg = sum(r["rating"] for r in all_reviews) / total
+        average_rating = round(avg, 1)
+    else:
+        average_rating = 0.0
+
+    # Paginated slice from all_reviews (avoid second query)
+    sorted_reviews = sorted(all_reviews, key=lambda r: r.get("created_at", ""), reverse=True)
+    reviews = sorted_reviews[skip:skip + limit]
+
+    # Batch fetch reviewer names — 1 query instead of N
+    if reviews:
+        reviewer_ids = list({r["reviewer_id"] for r in reviews})
+        users_map = batch_user_info(reviewer_ids)
+        for review in reviews:
+            owner = users_map.get(review["reviewer_id"], {})
+            review["reviewer_name"] = owner.get("name")
+
+    page = (skip // limit) + 1 if limit else 1
+    pages = math.ceil(total / limit) if limit and total else 0
+
+    return {
+        "reviews": reviews,
+        "average_rating": average_rating,
+        "total_reviews": total,
+        "rating_breakdown": rating_breakdown,
+        "page": page,
+        "limit": limit,
+        "pages": pages,
+    }
+
+
+@router.get("/{store_id}/listings", response_model=List[schemas.ListingOut])
+async def get_store_listings(
+    store_id: str,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+):
+    """
+    Get all active listings for a store.
+    Used for the Posts tab in store detail page.
+    """
+    # Verify store exists
+    store = db.select_one("stores", store_id)
+    if not store:
+        raise HTTPException(status_code=404, detail="Store not found")
+
+    def query_func(table):
+        return (
+            table.select("*")
+            .eq("store_id", store_id)
+            .eq("status", "active")
+            .range(skip, skip + limit - 1)
+            .order("created_at", desc=True)
+        )
+
+    result = db.query("listings", query_func)
+    listings = result.data if result.data else []
+
+    # Batch fetch images — 1 query instead of N
+    if listings:
+        listing_ids = [l["id"] for l in listings]
+        images_map = batch_listing_images(listing_ids)
+        for listing in listings:
+            listing["images"] = images_map.get(listing["id"], [])
+
+    return listings
+
+
+# -------------------------------------------------
 # ADMIN ENDPOINTS
 # -------------------------------------------------
 
-@admin_router.get("/", response_model=List[schemas.StoreOut])
+@admin_router.get("/", response_model=schemas.AdminStoreListResponse)
 async def list_all_stores_admin(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
-    status: Optional[str] = None
+    status: Optional[str] = Query(None, description="Filter by status: active, locked"),
+    search: Optional[str] = Query(None, description="Search by store name (English or Arabic)"),
 ):
     """
-    Admin: List all stores with optional status filter.
+    Admin: List all stores with pagination, optional status filter, and search.
+    Returns stores with owner info and total count for pagination.
     """
+    import math
+
+    # --- Count query ---
+    def count_func(table):
+        query = table.select("id", count="exact")
+        if status:
+            query = query.eq("status", status)
+        if search:
+            query = query.or_(f"name.ilike.%{search}%,name_ar.ilike.%{search}%")
+        return query
+
+    count_result = db.query("stores", count_func)
+    total = count_result.count if count_result.count is not None else 0
+
+    # --- Data query ---
     def query_func(table):
         query = table.select("*")
         if status:
             query = query.eq("status", status)
+        if search:
+            query = query.or_(f"name.ilike.%{search}%,name_ar.ilike.%{search}%")
         return query.range(skip, skip + limit - 1).order("created_at", desc=True)
 
     result = db.query("stores", query_func)
-    return result.data if result.data else []
+    stores = result.data if result.data else []
+
+    # --- Batch fetch owner info — 1 query instead of N ---
+    if stores:
+        user_ids = list({s["user_id"] for s in stores})
+        users_map = batch_user_info(user_ids)
+
+        for store in stores:
+            owner = users_map.get(store["user_id"], {})
+            store["owner_name"] = owner.get("name")
+            store["owner_phone"] = owner.get("phone_number")
+            store["owner_email"] = owner.get("email")
+
+    page = (skip // limit) + 1 if limit else 1
+    pages = math.ceil(total / limit) if limit and total else 0
+
+    return {
+        "stores": stores,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "pages": pages,
+    }
 
 
 @admin_router.put("/{store_id}/approve")
@@ -241,17 +440,10 @@ async def reject_store(store_id: str):
 async def lock_store(store_id: str):
     """
     Admin: Soft-lock a store. Status → 'locked'.
-    - Hidden from all public listings immediately
-    - Store data is preserved (not deleted)
-    - Owner can still log in but their store won't be visible
-    - Can be unlocked at any time with /unlock
     """
-    store = db.select_one("stores", store_id)
-    if not store:
-        raise HTTPException(status_code=404, detail="Store not found")
     updated = db.update("stores", store_id, {"status": "locked"})
     if not updated:
-        raise HTTPException(status_code=500, detail="Failed to lock store")
+        raise HTTPException(status_code=404, detail="Store not found")
     return updated
 
 @admin_router.put("/{store_id}/unlock")
@@ -259,10 +451,7 @@ async def unlock_store(store_id: str):
     """
     Admin: Unlock a previously locked store. Status → 'active'.
     """
-    store = db.select_one("stores", store_id)
-    if not store:
-        raise HTTPException(status_code=404, detail="Store not found")
     updated = db.update("stores", store_id, {"status": "active"})
     if not updated:
-        raise HTTPException(status_code=500, detail="Failed to unlock store")
+        raise HTTPException(status_code=404, detail="Store not found")
     return updated
