@@ -133,6 +133,8 @@ class StoreListOut(BaseModel):
     name: str
     name_ar: Optional[str] = None
     logo: Optional[str] = None
+    average_rating: Optional[float] = 0.0
+    total_reviews: Optional[int] = 0
 
 
 class StoreCreate(BaseModel):
@@ -172,6 +174,10 @@ class StoreOut(BaseModel):
     average_rating: Optional[float] = 0.0
     total_reviews: Optional[int] = 0
     is_own_store: Optional[bool] = False
+    governorate_en: Optional[str] = None
+    governorate_ar: Optional[str] = None
+    wilayat_en: Optional[str] = None
+    wilayat_ar: Optional[str] = None
 
 # Store Reviews
 class StoreReviewCreate(BaseModel):

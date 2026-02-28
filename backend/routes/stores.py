@@ -162,7 +162,24 @@ async def list_stores(
         return query.range(skip, skip + limit - 1).order("created_at", desc=True)
 
     result = db.query("stores", query_func)
-    return result.data if result.data else []
+    stores = result.data if result.data else []
+
+    # Batch fetch ratings for all stores — 1 query
+    if stores:
+        store_ids = [s["id"] for s in stores]
+        all_reviews = db.select_in("store_reviews", "store_id", store_ids, columns="store_id,rating")
+
+        # Group ratings by store
+        ratings_map = {}
+        for r in all_reviews:
+            ratings_map.setdefault(r["store_id"], []).append(r["rating"])
+
+        for store in stores:
+            ratings = ratings_map.get(store["id"], [])
+            store["average_rating"] = round(sum(ratings) / len(ratings), 1) if ratings else 0.0
+            store["total_reviews"] = len(ratings)
+
+    return stores
 
 
 @router.get("/{store_id}", response_model=schemas.StoreOut)
@@ -191,6 +208,20 @@ async def get_store(store_id: str, request: Request):
             store["is_own_store"] = (store["user_id"] == current_user["id"])
         except Exception:
             pass  # Invalid token — just default to False
+
+    # Resolve governorate and wilayat names
+    if store.get("governorate_id"):
+        gov = db.select_one("locations", store["governorate_id"], columns="name_en,name_ar")
+        if gov:
+            store["governorate_en"] = gov.get("name_en")
+            store["governorate_ar"] = gov.get("name_ar")
+
+    # Wilayat is stored as name_en text — look up the Arabic name
+    if store.get("wilayat"):
+        store["wilayat_en"] = store["wilayat"]
+        wilayat_records = db.select("locations", columns="name_ar", filters={"name_en": store["wilayat"], "type": "city"})
+        if wilayat_records:
+            store["wilayat_ar"] = wilayat_records[0].get("name_ar")
 
     return store
 
