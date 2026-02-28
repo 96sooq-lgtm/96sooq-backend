@@ -132,6 +132,14 @@ async def create_subscription_plan(plan: PricingPlanCreate, admin: dict = Depend
         # Clear ad_sub_type for non-ad plans
         plan_data['ad_sub_type'] = None
 
+    # Validate target_audience
+    valid_audiences = ['individual', 'store', 'everyone']
+    if plan_data.get('target_audience') not in valid_audiences:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid target_audience. Must be one of: {valid_audiences}"
+        )
+
     try:
         logger.info(f"Creating plan: name='{plan_data['name_en']}', type={plan_data['type']}, ad_sub_type={plan_data.get('ad_sub_type')}")
         new_plan = db.insert("pricing_plans", plan_data)
@@ -334,15 +342,25 @@ async def get_listing_prices(
 
 @user_router.get("/ad-prices", response_model=List[PricingPlanOut])
 async def get_ad_prices(
-    ad_sub_type: Optional[str] = Query(None, description="Filter by ad sub-type: 'product_listing', 'chat_screen', or 'offers'")
+    is_store: bool = Query(False, description="Is request for a store user?"),
+    ad_sub_type: Optional[str] = Query(None, description="Filter by ad sub-type: 'product_listing', 'chat_screen', or 'offers'"),
+    current_user: dict = Depends(get_current_customer)
 ):
     """
     Get all active ad plans.
-    Optionally filter by ad_sub_type to get specific ad plans.
+    Filters by the user's role (store vs individual) and optionally by ad_sub_type.
     """
     try:
+        user_id = current_user["id"]
+        target = "store" if is_store else "individual"
+
         def query_func(table):
-            query = table.select("*").eq("type", "ad").eq("is_active", True)
+            query = (
+                table.select("*")
+                .eq("type", "ad")
+                .eq("is_active", True)
+                .in_("target_audience", [target, "everyone"])
+            )
             if ad_sub_type:
                 query = query.eq("ad_sub_type", ad_sub_type)
             return query
