@@ -117,4 +117,60 @@ async def change_password(
     return {"message": "Password updated"}
 
 
+# -------------------------------------------------
+# ADMIN DASHBOARD
+# -------------------------------------------------
 
+@router.get("/dashboard", dependencies=[Depends(get_current_admin)])
+async def admin_dashboard():
+    """
+    Admin dashboard stats.
+    Returns counts and totals — all optimized with count queries (no SELECT *).
+    Total DB calls: 7 (all lightweight count/sum queries).
+    """
+    # 1. Total users (count only, no data fetched)
+    def count_users(table):
+        return table.select("id", count="exact").limit(0)
+
+    # 2. Total stores
+    def count_stores(table):
+        return table.select("id", count="exact").limit(0)
+
+    # 3. Total listings
+    def count_listings(table):
+        return table.select("id", count="exact").limit(0)
+
+    # 4. Pending approval requests (listings + stores)
+    def count_pending(table):
+        return table.select("id", count="exact").eq("status", "pending_approval").limit(0)
+
+    # 5. Total transactions (successful payments)
+    def count_transactions(table):
+        return table.select("id", count="exact").eq("status", "success").limit(0)
+
+    # 6. Total revenue — fetch only amount column for successful payments
+    def sum_revenue(table):
+        return table.select("amount").eq("status", "success")
+
+    users_result = db.query("app_users", count_users)
+    stores_result = db.query("stores", count_stores)
+    listings_result = db.query("listings", count_listings)
+    pending_result = db.query("listings", count_pending)
+    transactions_result = db.query("payments", count_transactions)
+    revenue_result = db.query("payments", sum_revenue)
+
+    # Calculate total revenue from fetched amounts
+    total_revenue = 0.0
+    if revenue_result.data:
+        total_revenue = sum(
+            float(p.get("amount", 0)) for p in revenue_result.data
+        )
+
+    return {
+        "total_users": users_result.count or 0,
+        "total_stores": stores_result.count or 0,
+        "total_listings": listings_result.count or 0,
+        "pending_requests": pending_result.count or 0,
+        "total_revenue": round(total_revenue, 3),
+        "total_transactions": transactions_result.count or 0,
+    }
