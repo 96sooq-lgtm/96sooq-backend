@@ -132,7 +132,7 @@ async def list_root_categories(
         if is_active is not None:
             query = query.eq("is_active", is_active)
             
-        return query.range(skip, skip + limit - 1).order("name_en")
+        return query.range(skip, skip + limit - 1).order("created_at")
 
     result = db.query("categories", query_func)
     categories = result.data if result.data else []
@@ -170,7 +170,7 @@ async def list_all_subcategories(
         if is_active is not None:
             query = query.eq("is_active", is_active)
 
-        return query.range(skip, skip + limit - 1).order("name_en")
+        return query.range(skip, skip + limit - 1).order("created_at")
 
     result = db.query("categories", query_func)
     subcategories = result.data if result.data else []
@@ -200,7 +200,7 @@ async def list_categories_admin(
 ):
     def query_func(table):
         # Sort by English name for consistency, or created_at
-        return table.select("*").range(skip, skip + limit - 1).order("created_at", desc=True)
+        return table.select("*").range(skip, skip + limit - 1).order("created_at")
 
     result = db.query("categories", query_func)
     categories = result.data if result.data else []
@@ -437,7 +437,7 @@ async def list_active_categories(
             # If no parent_id, fetch root categories (parent_id is null)
             query = query.is_("parent_id", "null")
             
-        return query.range(skip, skip + limit - 1).order("name_en")
+        return query.range(skip, skip + limit - 1).order("created_at")
 
     result = db.query("categories", query_func)
     categories = result.data if result.data else []

@@ -166,13 +166,13 @@ async def list_stores(
 
 
 @router.get("/{store_id}", response_model=schemas.StoreOut)
-async def get_store(store_id: str):
+async def get_store(store_id: str, request: Request):
     store = db.select_one("stores", store_id)
     if not store:
         raise HTTPException(status_code=404, detail="Store not found")
 
     # Add average rating and review count for store header
-    all_reviews = db.select("store_reviews", filters={"store_id": store_id})
+    all_reviews = db.select("store_reviews", columns="rating", filters={"store_id": store_id})
     if all_reviews:
         ratings = [r["rating"] for r in all_reviews]
         store["average_rating"] = round(sum(ratings) / len(ratings), 1)
@@ -180,6 +180,17 @@ async def get_store(store_id: str):
     else:
         store["average_rating"] = 0.0
         store["total_reviews"] = 0
+
+    # Check if logged-in user owns this store (optional auth)
+    store["is_own_store"] = False
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        try:
+            token = auth_header.split(" ", 1)[1]
+            current_user = decode_customer_token(token)
+            store["is_own_store"] = (store["user_id"] == current_user["id"])
+        except Exception:
+            pass  # Invalid token — just default to False
 
     return store
 
@@ -371,7 +382,6 @@ async def list_all_stores_admin(
 ):
     """
     Admin: List all stores with pagination, optional status filter, and search.
-    Returns stores with owner info and total count for pagination.
     """
     import math
 
@@ -387,9 +397,9 @@ async def list_all_stores_admin(
     count_result = db.query("stores", count_func)
     total = count_result.count if count_result.count is not None else 0
 
-    # --- Data query ---
+    # --- Data query (only needed columns) ---
     def query_func(table):
-        query = table.select("*")
+        query = table.select("id,name,name_ar,status,logo")
         if status:
             query = query.eq("status", status)
         if search:
@@ -398,17 +408,6 @@ async def list_all_stores_admin(
 
     result = db.query("stores", query_func)
     stores = result.data if result.data else []
-
-    # --- Batch fetch owner info — 1 query instead of N ---
-    if stores:
-        user_ids = list({s["user_id"] for s in stores})
-        users_map = batch_user_info(user_ids)
-
-        for store in stores:
-            owner = users_map.get(store["user_id"], {})
-            store["owner_name"] = owner.get("name")
-            store["owner_phone"] = owner.get("phone_number")
-            store["owner_email"] = owner.get("email")
 
     page = (skip // limit) + 1 if limit else 1
     pages = math.ceil(total / limit) if limit and total else 0
@@ -420,6 +419,42 @@ async def list_all_stores_admin(
         "limit": limit,
         "pages": pages,
     }
+
+
+@admin_router.get("/{store_id}")
+async def get_store_detail_admin(store_id: str):
+    """
+    Admin: Get full store details including owner info, rating, and listing count.
+    Total: 4 queries (store + owner + reviews + listing count).
+    """
+    store = db.select_one("stores", store_id)
+    if not store:
+        raise HTTPException(status_code=404, detail="Store not found")
+
+    # Owner info — 1 query
+    owner = db.select_one("app_users", store["user_id"], columns="id,name,phone_number,email")
+    store["owner_name"] = owner.get("name") if owner else None
+    store["owner_phone"] = owner.get("phone_number") if owner else None
+    store["owner_email"] = owner.get("email") if owner else None
+
+    # Rating stats — 1 query (select only rating column)
+    reviews = db.select("store_reviews", columns="rating", filters={"store_id": store_id})
+    if reviews:
+        ratings = [r["rating"] for r in reviews]
+        store["average_rating"] = round(sum(ratings) / len(ratings), 1)
+        store["total_reviews"] = len(ratings)
+    else:
+        store["average_rating"] = 0.0
+        store["total_reviews"] = 0
+
+    # Listing count — 1 query
+    def count_listings(table):
+        return table.select("id", count="exact").eq("store_id", store_id).limit(0)
+
+    listings_result = db.query("listings", count_listings)
+    store["total_listings"] = listings_result.count or 0
+
+    return store
 
 
 @admin_router.put("/{store_id}/approve")
@@ -439,9 +474,9 @@ async def reject_store(store_id: str):
 @admin_router.put("/{store_id}/lock")
 async def lock_store(store_id: str):
     """
-    Admin: Soft-lock a store. Status → 'locked'.
-    """
-    updated = db.update("stores", store_id, {"status": "locked"})
+    Admin: Deactivate a store. Status → 'inactive'.
+    """ 
+    updated = db.update("stores", store_id, {"status": "inactive"})
     if not updated:
         raise HTTPException(status_code=404, detail="Store not found")
     return updated
@@ -449,7 +484,7 @@ async def lock_store(store_id: str):
 @admin_router.put("/{store_id}/unlock")
 async def unlock_store(store_id: str):
     """
-    Admin: Unlock a previously locked store. Status → 'active'.
+    Admin: Reactivate a store. Status → 'active'.   
     """
     updated = db.update("stores", store_id, {"status": "active"})
     if not updated:

@@ -171,6 +171,7 @@ class StoreOut(BaseModel):
     created_at: Optional[str] = None
     average_rating: Optional[float] = 0.0
     total_reviews: Optional[int] = 0
+    is_own_store: Optional[bool] = False
 
 # Store Reviews
 class StoreReviewCreate(BaseModel):
@@ -195,13 +196,15 @@ class StoreReviewsResponse(BaseModel):
     limit: int
     pages: int
 
-class AdminStoreOut(StoreOut):
-    owner_name: Optional[str] = None
-    owner_phone: Optional[str] = None
-    owner_email: Optional[str] = None
+class AdminStoreListItem(BaseModel):
+    id: str
+    name: str
+    name_ar: Optional[str] = None
+    status: str
+    logo: Optional[str] = None
 
 class AdminStoreListResponse(BaseModel):
-    stores: List[AdminStoreOut]
+    stores: List[AdminStoreListItem]
     total: int
     page: int
     limit: int
