@@ -114,25 +114,26 @@ async def list_stores(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     my_stores: bool = Query(False, description="If true, return only the authenticated user's stores (requires Bearer token)"),
-    status: Optional[str] = Query(None, description="Filter by status — only applies when my_stores=true"),
+    status: Optional[str] = Query(None, description="Filter by status — only applies when fetching own stores"),
     location_id: Optional[str] = Query(None, description="Filter by governorate or wilayat UUID. If null, returns all stores."),
+    user_id: Optional[str] = Query(None, description="If 'current', return the authenticated user's stores (all statuses).")
 ):
     """
     List stores.
-    - No auth / my_stores=false → public active stores (paginated)
-    - my_stores=true + Bearer token → caller's own stores (all statuses, optional status filter)
+    - No auth / my_stores=false / user_id!=current → public active stores (paginated)
+    - my_stores=true OR user_id=current (+ Bearer token) → caller's own stores (all statuses, optional status filter)
     - location_id → filter by governorate (UUID) or wilayat (resolved to name)
     """
-    user_id = None
+    owner_id = None
 
-    if my_stores:
+    if my_stores or user_id == "current":
         auth_header = request.headers.get("Authorization", "")
         if not auth_header.startswith("Bearer "):
-            raise HTTPException(status_code=401, detail="Bearer token required for my_stores")
+            raise HTTPException(status_code=401, detail="Bearer token required to fetch own stores")
         token = auth_header.split(" ", 1)[1]
         try:
             current_user = decode_customer_token(token)
-            user_id = current_user["id"]
+            owner_id = current_user["id"]
         except Exception:
             raise HTTPException(status_code=401, detail="Invalid or expired token")
 
@@ -149,9 +150,9 @@ async def list_stores(
             wilayat_filter = location.get("name_en")  # filter by text name column
 
     def query_func(table):
-        query = table.select("id, name, name_ar, logo")
-        if user_id:
-            query = query.eq("user_id", user_id)
+        query = table.select("id, name, name_ar, status, logo")
+        if owner_id:
+            query = query.eq("user_id", owner_id)
             if status:
                 query = query.eq("status", status)
         else:
