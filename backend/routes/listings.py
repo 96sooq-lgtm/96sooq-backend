@@ -41,14 +41,14 @@ async def create_listing(
     current_user: dict = Depends(get_current_customer)
 ):
     """
-    Create a new listing.
+    Create a new listing (draft).
     
     Business Rules:
-    - First listing is FREE
-    - 2nd listing onwards requires payment (plan_id must be provided)
-    - All listings require admin approval (status = pending_approval)
+    - All listings require a paid subscription plan (no free listings)
+    - Listing is created as 'draft' — user must go to /payments/checkout with a plan
+    - After payment, status moves to 'pending_approval' for admin review
     - Category must be a leaf node
-    - Store is optional
+    - Store is optional (auto-assigned if user owns a store)
     """
     user_id = current_user["id"]
     

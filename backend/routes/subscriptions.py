@@ -28,71 +28,71 @@ user_router = APIRouter(
 # ----------------------------------------------------------------
 async def check_listing_quota(user_id: str, is_store_owner: bool) -> dict:
     """
-    Check listing quota for the current month.
+    Check listing quota based on active subscription.
+    No free tier — all listings require a paid plan.
     Returns:
     {
-        "can_create_free": bool,
-        "can_create_paid": bool,
-        "free_remaining": int,
-        "paid_remaining": int (or -1 if unlimited),
-        "message": str
+        "has_active_subscription": bool,
+        "can_create": bool,
+        "remaining_quota": int (or -1 if unlimited),
+        "usage_this_month": int
     }
     """
-    # 1. Get current month range
     now = datetime.utcnow()
+
+    # 1. Count listings this month
     start_of_month = datetime(now.year, now.month, 1)
-    # End of month is start of next month
     if now.month == 12:
         start_of_next_month = datetime(now.year + 1, 1, 1)
     else:
         start_of_next_month = datetime(now.year, now.month + 1, 1)
-        
-    start_str = start_of_month.isoformat()
-    end_str = start_of_next_month.isoformat()
-    
-    # 2. Count active listings created in this month
-    # Note: We need a complex query to filter by created_at >= start and < end
-    # Supabase simple client might need a custom query func
+
     def query_count(table):
         return table.select("id", count="exact")\
             .eq("user_id", user_id)\
-            .gte("created_at", start_str)\
-            .lt("created_at", end_str)
-            
+            .gte("created_at", start_of_month.isoformat())\
+            .lt("created_at", start_of_next_month.isoformat())
+
     result = db.query("listings", query_count)
-    count = result.count if result.count is not None else 0
-    
-    # 3. Define Limits
-    # Individual: 1 Free, 5 Paid (Total 6?) Or 1 Free AND 5 Paid?
-    # Requirement: "free 1 listing per month, certain amount - 5 listings/ month"
-    # Logic: 
-    # If count == 0 -> Can create Free OR Paid
-    # If count >= 1 -> Can create Paid only (up to limit)
-    
-    FREE_LIMIT = 1
-    
-    if is_store_owner:
-        PAID_LIMIT = -1 # Unlimited
-    else:
-        PAID_LIMIT = 5 # Individual limit for paid listings
-        
-    can_create_free = count < FREE_LIMIT
-    
-    if PAID_LIMIT == -1:
-        can_create_paid = True
-        paid_remaining = -1
-    else:
-        # Total allowed = Free + Paid limits? Or just total count?
-        # Let's assume Total Count Limit for individual is 1 + 5 = 6
-        TOTAL_LIMIT = FREE_LIMIT + PAID_LIMIT
-        can_create_paid = count < TOTAL_LIMIT
-        paid_remaining = max(0, TOTAL_LIMIT - count)
-        
+    usage = result.count if result.count is not None else 0
+
+    # 2. Check active subscription
+    def sub_query(table):
+        return table.select("*")\
+            .eq("user_id", user_id)\
+            .eq("status", "active")\
+            .gte("end_date", now.isoformat())\
+            .order("end_date", desc=True)\
+            .limit(1)
+
+    sub_result = db.query("user_subscriptions", sub_query)
+    active_sub = sub_result.data[0] if sub_result.data else None
+
+    if not active_sub:
+        return {
+            "has_active_subscription": False,
+            "can_create": False,
+            "remaining_quota": 0,
+            "usage_this_month": usage,
+            "message": "No active subscription. Please purchase a plan to create listings."
+        }
+
+    remaining = active_sub.get("remaining_quota", 0)
+
+    # Store owners with unlimited plans
+    if is_store_owner and remaining == -1:
+        return {
+            "has_active_subscription": True,
+            "can_create": True,
+            "remaining_quota": -1,
+            "usage_this_month": usage
+        }
+
     return {
-        "can_create_free": can_create_free,
-        "can_create_paid": can_create_paid,
-        "usage": count,
-        "paid_remaining": paid_remaining
+        "has_active_subscription": True,
+        "can_create": remaining > 0,
+        "remaining_quota": remaining,
+        "usage_this_month": usage
     }
 
 # ----------------------------------------------------------------
@@ -102,24 +102,47 @@ async def check_listing_quota(user_id: str, is_store_owner: bool) -> dict:
 @admin_router.post("/", response_model=PricingPlanOut, status_code=status.HTTP_201_CREATED)
 async def create_subscription_plan(plan: PricingPlanCreate, admin: dict = Depends(get_current_admin)):
     """
-    Create a new subscription plan (Admin only)
+    Create a new subscription plan (Admin only).
+    For ad plans, specify ad_sub_type: 'product_listing', 'chat_screen', or 'offers'.
     """
     plan_data = plan.dict()
-    
+
     # Validate type
-    if plan_data['type'] not in ['listing', 'ad', 'offer']:
+    valid_types = ['listing', 'ad', 'offer']
+    if plan_data['type'] not in valid_types:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, 
-            detail="Invalid plan type. Must be 'listing', 'ad', or 'offer'"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid plan type. Must be one of: {valid_types}"
         )
 
-    # Insert into DB
+    # Validate ad_sub_type when type is 'ad'
+    valid_ad_sub_types = ['product_listing', 'chat_screen', 'offers']
+    if plan_data['type'] == 'ad':
+        if not plan_data.get('ad_sub_type'):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"ad_sub_type is required when type is 'ad'. Must be one of: {valid_ad_sub_types}"
+            )
+        if plan_data['ad_sub_type'] not in valid_ad_sub_types:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid ad_sub_type. Must be one of: {valid_ad_sub_types}"
+            )
+    else:
+        # Clear ad_sub_type for non-ad plans
+        plan_data['ad_sub_type'] = None
+
     try:
+        logger.info(f"Creating plan: name='{plan_data['name_en']}', type={plan_data['type']}, ad_sub_type={plan_data.get('ad_sub_type')}")
         new_plan = db.insert("pricing_plans", plan_data)
         if not new_plan:
-             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create plan")
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create plan")
+        logger.info(f"Plan created: id={new_plan['id']}, name='{new_plan['name_en']}'")
         return new_plan
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Error creating plan: {type(e).__name__}: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 @admin_router.get("/", response_model=List[PricingPlanOut])
@@ -280,14 +303,13 @@ async def get_listing_prices(
     current_user: dict = Depends(get_current_customer)
 ):
     """
-    Get eligible subscription plans for Listings based on user's quota.
+    Get eligible paid subscription plans for listings.
+    No free plans are available.
     """
     try:
         user_id = current_user["id"]
-        # Check quota
         quota_status = await check_listing_quota(user_id, is_store)
 
-        # Fetch plans matching specific audience OR 'everyone'
         target = "store" if is_store else "individual"
 
         def query_func(table):
@@ -295,51 +317,51 @@ async def get_listing_prices(
                 table.select("*")
                 .eq("type", "listing")
                 .eq("is_active", True)
+                .gt("price", 0)  # Only paid plans
                 .in_("target_audience", [target, "everyone"])
             )
 
         result = db.query("pricing_plans", query_func)
         plans = result.data if result.data else []
 
-        # Filter plans based on quota
-        eligible_plans = []
-        for plan in plans:
-            price = plan.get("price", 0)
-
-            if price == 0:
-                if quota_status["can_create_free"]:
-                    eligible_plans.append(plan)
-            else:
-                if quota_status["can_create_paid"]:
-                    eligible_plans.append(plan)
-
         return {
             "quota_status": quota_status,
-            "plans": eligible_plans
+            "plans": plans
         }
     except Exception as e:
+        logger.error(f"Error fetching listing prices: {type(e).__name__}: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 @user_router.get("/ad-prices", response_model=List[PricingPlanOut])
-async def get_ad_prices():
+async def get_ad_prices(
+    ad_sub_type: Optional[str] = Query(None, description="Filter by ad sub-type: 'product_listing', 'chat_screen', or 'offers'")
+):
     """
-    Get all active subscription plans for Ads
+    Get all active ad plans.
+    Optionally filter by ad_sub_type to get specific ad plans.
     """
     try:
-        filters = {"type": "ad", "is_active": True}
-        plans = db.select("pricing_plans", filters=filters)
-        return plans
+        def query_func(table):
+            query = table.select("*").eq("type", "ad").eq("is_active", True)
+            if ad_sub_type:
+                query = query.eq("ad_sub_type", ad_sub_type)
+            return query
+
+        result = db.query("pricing_plans", query_func)
+        return result.data if result.data else []
     except Exception as e:
+        logger.error(f"Error fetching ad prices: {type(e).__name__}: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 @user_router.get("/offer-listing-prices", response_model=List[PricingPlanOut])
 async def get_offer_prices():
     """
-    Get all active subscription plans for Offers
+    Get all active subscription plans for Offers.
     """
     try:
         filters = {"type": "offer", "is_active": True}
         plans = db.select("pricing_plans", filters=filters)
         return plans
     except Exception as e:
+        logger.error(f"Error fetching offer prices: {type(e).__name__}: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))

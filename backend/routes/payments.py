@@ -41,61 +41,50 @@ class WebhookCallback(BaseModel):
 async def activate_bundle(payment_id: str, metadata: dict, user_id: str):
     """
     Activates the items in the bundle (Listing and/or Ad) after successful payment.
+    Called by the webhook after payment confirmation.
     Metadata contains: listing_id, listing_plan_id, ad_plan_id.
     """
     try:
-        print(f"Activating bundle for Payment: {payment_id}")
-        
+        logger.info(f"Activating bundle for payment={payment_id}, user={user_id}")
+
         listing_id = metadata.get("listing_id")
         listing_plan_id = metadata.get("listing_plan_id")
         ad_plan_id = metadata.get("ad_plan_id")
-        
-        # 1. Activate Listing (Plan or Quota)
+
+        # 1. Activate Listing — move to pending_approval
         if listing_id:
-            # Move listing to pending_approval
             db.update("listings", listing_id, {"status": "pending_approval"})
-            print(f"Listing {listing_id} moved to pending_approval")
-            
-            # Use Plan logic if plan provided
+            logger.info(f"Listing {listing_id} moved to pending_approval")
+
+            # Create subscription from the purchased plan
             if listing_plan_id:
                 plan = db.select_one("pricing_plans", listing_plan_id)
                 if plan:
-                     # If it's a paid plan, we might need to add quota?
-                     # OR does this payment cover THIS listing only?
-                     # User said: "basic (1 free)... other plans with number listings".
-                     # If they buy a plan, they get quota. One quota is used for THIS listing.
-                     
-                     days = plan.get("duration_days", 30)
-                     quota = plan.get("quota", 0)
-                     
-                     # Create Subscription
-                     sub_data = {
+                    days = plan.get("duration_days", 30)
+                    quota = plan.get("quota", 0)
+
+                    sub_data = {
                         "user_id": user_id,
                         "plan_id": listing_plan_id,
                         "start_date": datetime.utcnow().isoformat(),
                         "end_date": (datetime.utcnow() + timedelta(days=days)).isoformat(),
-                        "remaining_quota": quota - 1 if quota > 0 else quota, # Consumes 1 for current listing
+                        "remaining_quota": quota - 1 if quota > 0 else quota,
                         "status": "active"
                     }
-                     db.insert("user_subscriptions", sub_data)
-                     print(f"Subscription created for Plan {listing_plan_id}")
+                    db.insert("user_subscriptions", sub_data)
+                    logger.info(f"Subscription created: plan={listing_plan_id}, quota_remaining={sub_data['remaining_quota']}")
 
         # 2. Activate Ad Boost
         if ad_plan_id:
-             # Create Ad Record (Promoted Listing?)
-             # Assuming 'promoted_listings' table or similar logic exists?
-             # Or just update listing with 'is_featured' / 'ad_expiry'?
-             # Current schema doesn't describe Ad implementation details fully.
-             # MVP: Log it. Real implementation would insert into `ads` table.
-             print(f"Ad Boost {ad_plan_id} activated for Listing {listing_id}")
-             # db.insert("promoted_listings", ...)
-             
-        # Update Payment Check
+            logger.info(f"Ad boost {ad_plan_id} activated for listing {listing_id}")
+
+        # Update payment status
         db.update("payments", payment_id, {"status": "success"})
+        logger.info(f"Payment {payment_id} marked as success")
 
     except Exception as e:
-        print(f"Activation Bundle Error: {str(e)}")
-        # db.update("payments", payment_id, {"status": "failed_activation"})
+        logger.error(f"Bundle activation error for payment {payment_id}: {type(e).__name__}: {e}", exc_info=True)
+        db.update("payments", payment_id, {"status": "failed_activation"})
 
 
 @router.post("/checkout", response_model=CheckoutResponse)
@@ -105,53 +94,62 @@ async def checkout(
 ):
     """
     Unified Checkout for Listing + Ads.
-    Handles Free (Quota) and Paid flows.
+    All listings require a paid subscription plan — no free listings.
     """
     if not current_user:
         raise HTTPException(status_code=401, detail="Authentication required")
-        
-    try:
-        if payload.listing_plan_id and len(payload.listing_plan_id) < 10:
-             # Basic check to avoid short strings/placeholders
-             pass
-    except:
-        pass
 
     user_id = current_user.get("id")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid user token")
-    
+
+    logger.info(f"Checkout initiated: user={user_id}, listing={payload.listing_id}, plan={payload.listing_plan_id}")
+
     # 1. Validate Listing
     listing = db.select_one("listings", payload.listing_id)
     if not listing:
+        logger.warning(f"Checkout failed: listing '{payload.listing_id}' not found")
         raise HTTPException(status_code=404, detail="Listing not found")
-    
-    total_amount = 0.0
-    items = []
+
+    if listing.get("user_id") != user_id:
+        logger.warning(f"Checkout failed: user {user_id} does not own listing {payload.listing_id}")
+        raise HTTPException(status_code=403, detail="You can only checkout your own listings")
+
+    # 2. Require a listing plan — no free listings
+    if not payload.listing_plan_id:
+        logger.warning(f"Checkout failed: no listing_plan_id provided by user {user_id}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A subscription plan is required to list. Please select a plan."
+        )
+
+    plan = db.select_one("pricing_plans", payload.listing_plan_id)
+    if not plan:
+        logger.warning(f"Checkout failed: plan '{payload.listing_plan_id}' not found")
+        raise HTTPException(status_code=404, detail="Listing plan not found")
+
+    if not plan.get("is_active"):
+        logger.warning(f"Checkout failed: plan '{payload.listing_plan_id}' is inactive")
+        raise HTTPException(status_code=400, detail="This plan is no longer available")
+
+    plan_price = plan.get("price", 0)
+    if plan_price <= 0:
+        logger.warning(f"Checkout rejected: plan '{plan['name_en']}' has price={plan_price} (free plans not allowed)")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Free listing plans are no longer available. Please select a paid plan."
+        )
+
+    total_amount = plan_price
+    items = [f"Listing Plan: {plan['name_en']}"]
     metadata = {
         "listing_id": payload.listing_id,
         "listing_plan_id": payload.listing_plan_id,
         "ad_plan_id": payload.ad_plan_id
     }
-    
-    # 2. Calculate Listing Price
-    if payload.listing_plan_id:
-        plan = db.select_one("pricing_plans", payload.listing_plan_id)
-        if not plan:
-             raise HTTPException(status_code=404, detail="Listing Plan not found")
-             
-        price = plan.get("price")
-        if price is None:
-             price = 0.0
-        total_amount += price
-        items.append(f"Listing Plan: {plan['name_en']}")
-        
-        # Validation: If Free Plan, check if user already used it?
-        # TODO: Strict "Free Logic" check here if price == 0.
-        
-    # 3. Calculate Ad Price
+
+    # 3. Calculate Ad Price (optional add-on)
     if payload.ad_plan_id:
-        # Validate UUID format to prevent 500 errors from DB
         try:
             uuid.UUID(str(payload.ad_plan_id))
         except ValueError:
@@ -159,54 +157,35 @@ async def checkout(
 
         ad_plan = db.select_one("pricing_plans", payload.ad_plan_id)
         if not ad_plan:
-             raise HTTPException(status_code=404, detail="Ad Plan not found")
-             
-        price = ad_plan.get("price")
-        if price is None:
-             price = 0.0
-        total_amount += price
-        items.append(f"Ad: {ad_plan['name_en']}")
+            logger.warning(f"Checkout failed: ad plan '{payload.ad_plan_id}' not found")
+            raise HTTPException(status_code=404, detail="Ad plan not found")
+
+        ad_price = ad_plan.get("price", 0)
+        if ad_price > 0:
+            total_amount += ad_price
+            items.append(f"Ad Boost: {ad_plan['name_en']}")
+
+    logger.info(f"Checkout total: {total_amount} {payload.currency} for {len(items)} items")
 
     # 4. Create Transaction Record
     transaction_uuid = str(uuid.uuid4())
     payment_data = {
         "id": transaction_uuid,
         "user_id": user_id,
-        "plan_id": payload.listing_plan_id, # Primary plan? 
-        # schema requires plan_id not null... let's use listing plan or ad plan or check schema
-        # Schema: plan_id NOT NULL. We might need a dummy ID or relaxed constraint if paying for ad ONLY?
-        # Let's assume listing_plan_id is always present for now.
+        "plan_id": payload.listing_plan_id,
         "amount": total_amount,
         "currency": payload.currency,
         "status": "pending",
-        "payment_method": "system" if total_amount == 0 else "card",
+        "payment_method": "card",
         "metadata": json.dumps(metadata)
     }
-    
-    # Check plan_id constraint
-    if not payload.listing_plan_id:
-         # If paying for Ad only on existing listing?
-         # For this specific flow (New Listing), listing_plan_id is expected.
-         if payload.ad_plan_id:
-             payment_data["plan_id"] = payload.ad_plan_id
-         else:
-             # Should not happen if strictly following flow
-             # Using a fallback or error
-             pass
 
     payment = db.insert("payments", payment_data)
-    
-    # 5. Handle Free/Quota Flow
-    if total_amount == 0:
-        # Immediate Activation
-        await activate_bundle(transaction_uuid, metadata, user_id)
-        return {
-            "status": "success",
-            "transaction_id": transaction_uuid,
-            "message": "Order processed successfully. Listing is under review."
-        }
-        
-    # 6. Handle Paid Flow
+    if not payment:
+        logger.error(f"Failed to create payment record for user {user_id}")
+        raise HTTPException(status_code=500, detail="Failed to create payment record")
+
+    # 5. Initiate Payment (all listings are paid now)
     try:
         amount_cents = int(total_amount * 1000) # OMR 3 decimals
         

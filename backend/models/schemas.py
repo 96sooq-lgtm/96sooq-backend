@@ -100,10 +100,11 @@ class PricingPlanCreate(BaseModel):
     name_en: str
     name_ar: str
     type: str  # listing, ad, offer
+    ad_sub_type: Optional[str] = None  # product_listing, chat_screen, offers (only when type='ad')
     price: float
     duration_days: int
     quota: int = 0
-    target_audience: str = "individual"  # individual, store
+    target_audience: str = "individual"  # individual, store, everyone
     description: Optional[str] = None
     features: Optional[dict] = {}
     is_active: bool = True
@@ -113,6 +114,7 @@ class PricingPlanUpdate(BaseModel):
     name_en: Optional[str] = None
     name_ar: Optional[str] = None
     type: Optional[str] = None
+    ad_sub_type: Optional[str] = None
     price: Optional[float] = None
     duration_days: Optional[int] = None
     quota: Optional[int] = None
