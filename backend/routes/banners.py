@@ -65,6 +65,9 @@ async def boost_listing(
             "image_url": image_url,
             "description": payload.description,
             "status": banner_status,
+            # Inherit location from listing for location-targeted promotions
+            "governorate_id": listing.get("location_id"),
+            "wilayat": listing.get("place"),
         }
 
         # If plan_id provided, attach it and calculate expiry immediately

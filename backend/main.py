@@ -25,6 +25,7 @@ from routes.payments import router as payments_router
 from routes.favorites import router as favorites_router
 from routes.chats import router as chats_router
 from routes.chats import admin_router as admin_chats_router
+from routes.feed import router as feed_router
 
 # Setup logging
 setup_logging()
@@ -95,6 +96,7 @@ app.include_router(payments_router)
 app.include_router(favorites_router)
 app.include_router(chats_router)
 app.include_router(admin_chats_router)
+app.include_router(feed_router)
 
 
 @app.get("/")
