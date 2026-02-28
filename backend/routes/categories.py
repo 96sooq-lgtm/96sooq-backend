@@ -3,8 +3,11 @@ from models import schemas
 from db.supabase_client import db
 from utils.auth import get_current_admin
 from utils.helpers import get_viewable_image_url
+from utils.logger import get_logger
 from typing import Optional, List
 import json
+
+logger = get_logger(__name__)
 
 # Admin Router
 admin_router = APIRouter(

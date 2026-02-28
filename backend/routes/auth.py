@@ -2,8 +2,11 @@ from fastapi import APIRouter, HTTPException, status, Depends
 from models import schemas
 from db.supabase_client import db
 from utils.auth import create_access_token, create_customer_token, get_current_customer
+from utils.logger import get_logger
 from pydantic import BaseModel, EmailStr
 from typing import Optional
+
+logger = get_logger(__name__)
 
 router = APIRouter(
     prefix="/api/auth",

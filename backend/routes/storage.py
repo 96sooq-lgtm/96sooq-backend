@@ -2,8 +2,11 @@ from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from pydantic import BaseModel
 from typing import Optional
 from utils.storage import s3_client
+from utils.logger import get_logger
 import uuid
 import shutil
+
+logger = get_logger(__name__)
 
 router = APIRouter(
     prefix="/storage",

@@ -3,6 +3,9 @@ from typing import List, Optional
 from models import schemas
 from db.supabase_client import db
 from utils.auth import get_current_admin, get_current_customer
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 from datetime import datetime, timedelta
 
 # Public/User Router

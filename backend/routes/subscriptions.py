@@ -3,6 +3,9 @@ from typing import List, Optional
 from models import schemas
 from models.schemas import PricingPlanCreate, PricingPlanOut, PricingPlanUpdate
 from db.supabase_client import db
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 from utils.auth import get_current_admin
 from uuid import uuid4
 from datetime import datetime, timedelta

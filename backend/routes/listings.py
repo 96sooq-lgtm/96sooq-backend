@@ -3,8 +3,11 @@ from models import schemas
 from db.supabase_client import db
 from utils.auth import get_current_customer, get_current_admin
 from utils.helpers import get_viewable_image_url, batch_listing_images, batch_locations
+from utils.logger import get_logger
 from typing import List, Optional
 from datetime import datetime
+
+logger = get_logger(__name__)
 
 # Public/User Router
 router = APIRouter(

@@ -1,8 +1,11 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import uvicorn
+import traceback
 from config.settings import Settings
+from utils.logger import setup_logging, get_logger
 from routes import health
 from routes.admin import router as admin_router
 from routes.auth import router as auth_router
@@ -21,17 +24,18 @@ from routes.locations import router as locations_router
 from routes.payments import router as payments_router
 from routes.favorites import router as favorites_router
 
+# Setup logging
+setup_logging()
+logger = get_logger("main")
 
 # Load settings
 settings = Settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
-    print("Starting 96sooq Backend API...")
+    logger.info("Starting 96sooq Backend API...")
     yield
-    # Shutdown
-    print("Shutting down 96sooq Backend API...")
+    logger.info("Shutting down 96sooq Backend API...")
 
 # Create FastAPI app
 app = FastAPI(
@@ -40,6 +44,25 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# -----------------------------------------------
+# GLOBAL EXCEPTION HANDLER
+# Catches all unhandled exceptions → returns 500
+# with clean JSON instead of raw stack trace
+# -----------------------------------------------
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error(
+        f"Unhandled exception on {request.method} {request.url.path}: "
+        f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "An internal error occurred. Please try again later.",
+            "error_type": type(exc).__name__,
+        }
+    )
 
 # CORS middleware
 app.add_middleware(
@@ -68,7 +91,6 @@ app.include_router(banners_router)
 app.include_router(admin_banners_router)
 app.include_router(payments_router)
 app.include_router(favorites_router)
-
 
 
 @app.get("/")

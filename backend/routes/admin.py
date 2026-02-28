@@ -5,6 +5,9 @@ from models import schemas
 from models.schemas import Token
 from db.supabase_client import db
 from utils.auth import create_access_token, get_current_admin
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(
     prefix="/api/admin",

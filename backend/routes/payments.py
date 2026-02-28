@@ -4,10 +4,13 @@ from typing import Optional, List
 from db.supabase_client import db
 from utils.auth import get_current_customer
 from utils.paymob import PaymobManager
+from utils.logger import get_logger
 from config.settings import settings
 import uuid
 import json
 from datetime import datetime, timedelta
+
+logger = get_logger(__name__)
 
 router = APIRouter(
     prefix="/api/payments",

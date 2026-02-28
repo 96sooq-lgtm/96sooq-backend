@@ -2,6 +2,9 @@ from fastapi import APIRouter, Query, HTTPException, status
 from typing import List, Optional
 from pydantic import BaseModel
 from db.supabase_client import db
+from utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 router = APIRouter(
     prefix="/api/locations",
