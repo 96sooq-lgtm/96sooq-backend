@@ -31,6 +31,32 @@ def is_leaf_category(category_id: str) -> bool:
     children = db.select("categories", filters={"parent_id": category_id})
     return not bool(children)
 
+def enrich_attributes_with_type(attributes_values: dict, category_id: str) -> dict:
+    """
+    Enriches attributes values with their type and labels from category schema.
+    """
+    if not attributes_values:
+        return {}
+    category = db.select_one("categories", category_id)
+    if not category or not category.get("attributes_schema"):
+        return attributes_values
+        
+    schema_map = {attr.get("name"): attr for attr in category.get("attributes_schema", [])}
+    enriched_attrs = {}
+    
+    for key, val in attributes_values.items():
+        # Handle case where value is already enriched (e.g., during update sent back by frontend)
+        actual_val = val.get("value") if isinstance(val, dict) and "value" in val else val
+        
+        attr_def = schema_map.get(key, {})
+        enriched_attrs[key] = {
+            "value": actual_val,
+            "type": attr_def.get("type", "text_field"),
+            "label_en": attr_def.get("label_en", key),
+            "label_ar": attr_def.get("label_ar", "")
+        }
+    return enriched_attrs
+
 # -------------------------------------------------
 # PUBLIC / CUSTOMER ENDPOINTS
 # -------------------------------------------------
@@ -119,6 +145,12 @@ async def create_listing(
         data["store_id"] = store_id
     else:
         data["store_id"] = None
+        
+    # Enrich attributes with type and labels based on category schema
+    if data.get("attributes_values"):
+        data["attributes_values"] = enrich_attributes_with_type(
+            data["attributes_values"], payload.category_id
+        )
     
     # 5. Create Listing
     listing = db.insert("listings", data)
@@ -235,6 +267,13 @@ async def update_listing(
     
     if is_sensitive_update and listing["status"] == "active":
         update_data["status"] = "pending_approval"
+        
+    # Enrich attributes if they are being updated
+    if "attributes_values" in update_data and update_data["attributes_values"]:
+        cat_id = update_data.get("category_id") or listing.get("category_id")
+        update_data["attributes_values"] = enrich_attributes_with_type(
+            update_data["attributes_values"], cat_id
+        )
         
     updated = db.update("listings", listing_id, update_data)
     if not updated:
