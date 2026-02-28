@@ -349,4 +349,55 @@ class UserSubscriptionOut(UserSubscriptionBase):
     plan_details: Optional[PricingPlanOut] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
+
+
+# ─── CHAT SCHEMAS ─────────────────────────────────────────────────────────────
+
+class ConversationInitiate(BaseModel):
+    listing_id: str
+
+
+class ConversationOut(BaseModel):
+    id: str
+    listing_id: str
+    buyer_id: str
+    seller_id: str
+    status: str
+    last_message: Optional[str] = None
+    last_message_at: Optional[datetime] = None
+    buyer_unread: int = 0
+    seller_unread: int = 0
+    # Annotated server-side per requesting user
+    unread_count: Optional[int] = 0
+    my_role: Optional[str] = None       # "buyer" | "seller"
+    listing: Optional[dict] = None      # joined listing snapshot
+    created_at: Optional[str] = None
+
+
+class ConversationListResponse(BaseModel):
+    conversations: List[ConversationOut]
+    total: int
+    page: int
+    limit: int
+
+
+class MessageCreate(BaseModel):
+    content: Optional[str] = None
+    message_type: str = "text"          # text | image | offer
+    media_url: Optional[str] = None
+    offer_amount: Optional[float] = None
+
+
+class MessageOut(BaseModel):
+    id: str
+    conversation_id: str
+    sender_id: str
+    content: Optional[str] = None
+    message_type: str
+    media_url: Optional[str] = None
+    offer_amount: Optional[float] = None
+    offer_status: Optional[str] = None
+    is_read: bool
+    is_deleted: bool
+    created_at: str
