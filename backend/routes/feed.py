@@ -162,7 +162,7 @@ def _fetch_organic_listings(
 
 
 @router.get("/")
-async def get_feed(
+def get_feed(
     lat: Optional[float] = Query(None, description="User's latitude (optional)"),
     lng: Optional[float] = Query(None, description="User's longitude (optional)"),
     page: int = Query(0, ge=0, description="Page number (0-based)"),
@@ -351,7 +351,7 @@ async def get_feed(
 
 
 @router.get("/offers")
-async def get_location_offers(
+def get_location_offers(
     lat: Optional[float] = Query(None, description="User's latitude (optional)"),
     lng: Optional[float] = Query(None, description="User's longitude (optional)"),
     page: int = Query(0, ge=0),
@@ -439,7 +439,7 @@ async def get_location_offers(
 
 
 @router.get("/nearby-stores")
-async def get_nearby_stores(
+def get_nearby_stores(
     lat: Optional[float] = Query(None, description="User's latitude (optional)"),
     lng: Optional[float] = Query(None, description="User's longitude (optional)"),
     page: int = Query(0, ge=0),
@@ -561,7 +561,7 @@ async def get_nearby_stores(
 
 
 @router.get("/resolve-location")
-async def resolve_user_location(
+def resolve_user_location(
     lat: float = Query(..., description="User's latitude"),
     lng: float = Query(..., description="User's longitude"),
 ):
@@ -589,7 +589,7 @@ async def resolve_user_location(
 
 
 @router.get("/category/{category_id}")
-async def get_category_feed(
+def get_category_feed(
     category_id: str,
     lat: Optional[float] = Query(None, description="User's latitude (optional)"),
     lng: Optional[float] = Query(None, description="User's longitude (optional)"),

@@ -27,7 +27,7 @@ admin_router = APIRouter(
 # -------------------------------------------------
 
 @router.post("/", response_model=schemas.StoreOut, status_code=status.HTTP_201_CREATED)
-async def create_store(
+def create_store(
     payload: schemas.StoreCreate,
     current_user: dict = Depends(get_current_customer)
 ):
@@ -92,7 +92,7 @@ async def create_store(
 
 
 @router.get("/check")
-async def check_user_store(
+def check_user_store(
     current_user: dict = Depends(get_current_customer)
 ):
     """
@@ -109,7 +109,7 @@ async def check_user_store(
 
 
 @router.get("/", response_model=List[schemas.StoreListOut])
-async def list_stores(
+def list_stores(
     request: Request,
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
@@ -195,7 +195,7 @@ async def list_stores(
 
 
 @router.get("/{store_id}", response_model=schemas.StoreOut)
-async def get_store(store_id: str, request: Request):
+def get_store(store_id: str, request: Request):
     store = db.select_one("stores", store_id)
     if not store:
         raise HTTPException(status_code=404, detail="Store not found")
@@ -239,7 +239,7 @@ async def get_store(store_id: str, request: Request):
 
 
 @router.put("/{store_id}", response_model=schemas.StoreOut)
-async def update_store(
+def update_store(
     store_id: str, 
     payload: schemas.StoreUpdate,
     current_user: dict = Depends(get_current_customer)
@@ -268,7 +268,7 @@ async def update_store(
 # -------------------------------------------------
 
 @router.post("/{store_id}/reviews", response_model=schemas.StoreReviewOut, status_code=status.HTTP_201_CREATED)
-async def create_store_review(
+def create_store_review(
     store_id: str,
     payload: schemas.StoreReviewCreate,
     current_user: dict = Depends(get_current_customer)
@@ -314,7 +314,7 @@ async def create_store_review(
 
 
 @router.get("/{store_id}/reviews", response_model=schemas.StoreReviewsResponse)
-async def get_store_reviews(
+def get_store_reviews(
     store_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
@@ -376,7 +376,7 @@ async def get_store_reviews(
 
 
 @router.get("/{store_id}/listings", response_model=List[schemas.ListingOut])
-async def get_store_listings(
+def get_store_listings(
     store_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
@@ -446,7 +446,7 @@ async def get_store_listings(
 # -------------------------------------------------
 
 @admin_router.get("/", response_model=schemas.AdminStoreListResponse)
-async def list_all_stores_admin(
+def list_all_stores_admin(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     status: Optional[str] = Query(None, description="Filter by status: active, locked"),
@@ -494,7 +494,7 @@ async def list_all_stores_admin(
 
 
 @admin_router.get("/{store_id}")
-async def get_store_detail_admin(store_id: str):
+def get_store_detail_admin(store_id: str):
     """
     Admin: Get full store details including owner info, rating, and listing count.
     Total: 4 queries (store + owner + reviews + listing count).
@@ -530,21 +530,21 @@ async def get_store_detail_admin(store_id: str):
 
 
 @admin_router.put("/{store_id}/approve")
-async def approve_store(store_id: str):
+def approve_store(store_id: str):
     updated = db.update("stores", store_id, {"status": "active"})
     if not updated:
          raise HTTPException(status_code=404, detail="Store not found or update failed")
     return updated
 
 @admin_router.put("/{store_id}/reject")
-async def reject_store(store_id: str):
+def reject_store(store_id: str):
     updated = db.update("stores", store_id, {"status": "rejected"})
     if not updated:
          raise HTTPException(status_code=404, detail="Store not found or update failed")
     return updated
 
 @admin_router.put("/{store_id}/lock")
-async def lock_store(store_id: str):
+def lock_store(store_id: str):
     """
     Admin: Deactivate a store. Status → 'inactive'.
     """ 
@@ -554,7 +554,7 @@ async def lock_store(store_id: str):
     return updated
 
 @admin_router.put("/{store_id}/unlock")
-async def unlock_store(store_id: str):
+def unlock_store(store_id: str):
     """
     Admin: Reactivate a store. Status → 'active'.   
     """

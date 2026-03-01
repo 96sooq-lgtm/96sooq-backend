@@ -27,7 +27,7 @@ user_router = APIRouter(
 # -------------------------------------------------
 
 @admin_router.post("/", response_model=schemas.CategoryOut, status_code=status.HTTP_201_CREATED)
-async def create_category(payload: schemas.CategoryCreate):
+def create_category(payload: schemas.CategoryCreate):
     """
     Create a category or subcategory.
     - For categories: name_en, name_ar, image_url (from /storage/upload)
@@ -135,7 +135,7 @@ async def create_category(payload: schemas.CategoryCreate):
 
 
 @admin_router.get("/list", response_model=list[schemas.CategoryOut])
-async def list_root_categories(
+def list_root_categories(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     is_active: Optional[bool] = Query(None, description="Filter by active status. If omitted, returns all.")
@@ -172,7 +172,7 @@ async def list_root_categories(
 
 
 @admin_router.get("/subcategories", response_model=list[schemas.CategoryOut])
-async def list_all_subcategories(
+def list_all_subcategories(
     parent_id: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
@@ -226,7 +226,7 @@ async def list_all_subcategories(
 
 
 @admin_router.get("/", response_model=list[schemas.CategoryOut])
-async def list_categories_admin(
+def list_categories_admin(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500)
 ):
@@ -258,7 +258,7 @@ async def list_categories_admin(
 
 
 @admin_router.get("/{category_id}", response_model=schemas.CategoryOut)
-async def get_category(category_id: str):
+def get_category(category_id: str):
     """Admin: Get a single category by ID."""
     try:
         logger.info(f"Fetching category: id={category_id}")
@@ -287,7 +287,7 @@ async def get_category(category_id: str):
 
 
 @admin_router.put("/{category_id}", response_model=schemas.CategoryOut)
-async def update_category(category_id: str, payload: schemas.CategoryUpdate):
+def update_category(category_id: str, payload: schemas.CategoryUpdate):
     """
     Update a category or subcategory.
     Use image_url from /storage/upload endpoint.
@@ -378,7 +378,7 @@ async def update_category(category_id: str, payload: schemas.CategoryUpdate):
 
 
 @admin_router.delete("/{category_id}")
-async def delete_category(category_id: str):
+def delete_category(category_id: str):
     """Admin: Soft-delete a category (sets is_deleted=True)."""
     try:
         logger.info(f"Deleting category: id={category_id}")
@@ -430,7 +430,7 @@ async def delete_category(category_id: str):
 
 
 @admin_router.post("/{category_id}/attributes", response_model=schemas.CategoryOut, status_code=status.HTTP_201_CREATED)
-async def add_subcategory_attribute(
+def add_subcategory_attribute(
     category_id: str,
     attribute: schemas.AttributeDefinition
 ):
@@ -488,7 +488,7 @@ async def add_subcategory_attribute(
 
 
 @admin_router.patch("/{category_id}/attributes", response_model=schemas.CategoryOut)
-async def replace_subcategory_attributes(
+def replace_subcategory_attributes(
     category_id: str,
     attributes: List[schemas.AttributeDefinition]
 ):
@@ -546,7 +546,7 @@ async def replace_subcategory_attributes(
 
 
 @admin_router.delete("/{category_id}/attributes/{attribute_name}", response_model=schemas.CategoryOut)
-async def delete_subcategory_attribute(category_id: str, attribute_name: str):
+def delete_subcategory_attribute(category_id: str, attribute_name: str):
     """
     Admin: Remove a single attribute by its name.
     Example: DELETE /api/admin/categories/{id}/attributes/fuel
@@ -598,7 +598,7 @@ async def delete_subcategory_attribute(category_id: str, attribute_name: str):
 # -------------------------------------------------
 
 @user_router.get("/", response_model=list[schemas.CategoryOut])
-async def list_active_categories(
+def list_active_categories(
     parent_id: str | None = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500)
@@ -634,7 +634,7 @@ async def list_active_categories(
 
 
 @user_router.get("/{category_id}/is-leaf")
-async def check_category_is_leaf(category_id: str):
+def check_category_is_leaf(category_id: str):
     """Public: Check if a category is a leaf node (has no children)."""
     try:
         children = db.select("categories", filters={"parent_id": category_id})

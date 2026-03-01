@@ -43,7 +43,7 @@ class OAuthCompleteProfileRequest(BaseModel):
 # -------------------------------------------------
 
 @router.post("/oauth/check-user", response_model=OAuthCheckResponse)
-async def oauth_check_user(payload: OAuthCheckRequest):
+def oauth_check_user(payload: OAuthCheckRequest):
     """
     Step 1: Check if user exists after Google/Apple/Facebook OAuth.
     
@@ -101,7 +101,7 @@ async def oauth_check_user(payload: OAuthCheckRequest):
 
 
 @router.post("/oauth/complete-profile", response_model=schemas.CustomerOut)
-async def oauth_complete_profile(payload: OAuthCompleteProfileRequest):
+def oauth_complete_profile(payload: OAuthCompleteProfileRequest):
     """
     Step 2: Complete user profile for new OAuth users.
     

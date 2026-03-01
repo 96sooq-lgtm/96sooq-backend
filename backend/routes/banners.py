@@ -35,7 +35,7 @@ admin_router = APIRouter(
 # -------------------------------------------------
 
 @router.post("/boost", response_model=schemas.AdBannerOut, status_code=status.HTTP_201_CREATED)
-async def boost_listing(
+def boost_listing(
     payload: schemas.UserBoostCreate,
     current_user: dict = Depends(get_current_customer)
 ):
@@ -101,7 +101,7 @@ async def boost_listing(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.put("/{banner_id}/pay", response_model=schemas.AdBannerOut)
-async def pay_for_banner(
+def pay_for_banner(
     banner_id: str,
     plan_id: str
 ):
@@ -128,7 +128,7 @@ async def pay_for_banner(
     return enrich_banner(updated)
 
 @router.get("/my-banners", response_model=List[schemas.AdBannerOut])
-async def list_my_banners(
+def list_my_banners(
     current_user: dict = Depends(get_current_customer)
 ):
     """
@@ -138,7 +138,7 @@ async def list_my_banners(
     return enrich_banners(banners if banners else [])
 
 @router.get("/public", response_model=List[schemas.AdBannerOut])
-async def list_active_banners(
+def list_active_banners(
     type: Optional[str] = None,
     limit: int = 20
 ):
@@ -156,7 +156,7 @@ async def list_active_banners(
 
 
 @router.get("/home", response_model=List[schemas.AdBannerOut])
-async def get_home_banners(
+def get_home_banners(
     limit: int = Query(20, ge=1, le=100)
 ):
     """
@@ -178,7 +178,7 @@ async def get_home_banners(
 
 
 @router.get("/featured", response_model=List[schemas.AdBannerOut])
-async def get_featured_banners():
+def get_featured_banners():
     """
     Public — no auth required.
     Returns all active admin-created banners (no listing_id).
@@ -197,7 +197,7 @@ async def get_featured_banners():
 
 
 @router.get("/offers", response_model=List[schemas.AdBannerOut])
-async def get_offers():
+def get_offers():
     """
     Public — no auth required.
     Returns all active offer-type admin banners (multiple images each).
@@ -220,7 +220,7 @@ async def get_offers():
 # -------------------------------------------------
 
 @admin_router.post("/", response_model=schemas.AdBannerOut, status_code=status.HTTP_201_CREATED)
-async def create_banner_admin(
+def create_banner_admin(
     payload: schemas.AdminBannerCreate,
     current_admin: dict = Depends(get_current_admin)
 ):
@@ -253,7 +253,7 @@ async def create_banner_admin(
         raise HTTPException(status_code=500, detail=str(e))
 
 @admin_router.get("/", response_model=List[schemas.AdBannerOut])
-async def list_all_banners_admin(
+def list_all_banners_admin(
     status: Optional[str] = None,
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100)
@@ -271,7 +271,7 @@ async def list_all_banners_admin(
     return enrich_banners(result.data if result.data else [])
 
 @admin_router.patch("/{banner_id}", response_model=schemas.AdBannerOut)
-async def update_banner_admin(
+def update_banner_admin(
     banner_id: str,
     payload: schemas.AdBannerUpdate,
 ):
@@ -302,7 +302,7 @@ async def update_banner_admin(
 
 
 @admin_router.put("/{banner_id}/approve", response_model=schemas.AdBannerOut)
-async def approve_banner(banner_id: str):
+def approve_banner(banner_id: str):
     """
     Approve a banner. Calculate expiration based on plan.
     """
@@ -333,14 +333,14 @@ async def approve_banner(banner_id: str):
     return enrich_banner(updated)
 
 @admin_router.put("/{banner_id}/reject", response_model=schemas.AdBannerOut)
-async def reject_banner(banner_id: str):
+def reject_banner(banner_id: str):
     updated = db.update("ad_banners", banner_id, {"status": "rejected"})
     if not updated:
          raise HTTPException(status_code=404, detail="Banner not found")
     return enrich_banner(updated)
 
 @admin_router.delete("/{banner_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_banner(banner_id: str):
+def delete_banner(banner_id: str):
     success = db.delete("ad_banners", banner_id)
     if not success:
          raise HTTPException(status_code=404, detail="Banner not found")

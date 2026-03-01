@@ -20,7 +20,7 @@ class LocationOut(BaseModel):
     is_active: bool
 
 @router.get("/", response_model=List[LocationOut])
-async def list_locations(
+def list_locations(
     type: Optional[str] = Query(None, description="Filter by type: state, district, city"),
     parent_id: Optional[str] = Query(None, description="Filter by parent location ID"),
     is_active: bool = Query(True, description="Filter active locations")
@@ -49,7 +49,7 @@ async def list_locations(
     return result.data if result.data else []
 
 @router.get("/{location_id}", response_model=LocationOut)
-async def get_location(location_id: str):
+def get_location(location_id: str):
     location = db.select_one("locations", location_id)
     if not location:
         raise HTTPException(status_code=404, detail="Location not found")

@@ -67,7 +67,7 @@ def _get_conv_or_404(conversation_id: str) -> dict:
     status_code=201,
     summary="Make Deal — initiate or resume a chat about a listing",
 )
-async def initiate_chat(
+def initiate_chat(
     payload: ConversationInitiate,
     current_user: dict = Depends(get_current_customer),
 ):
@@ -127,7 +127,7 @@ async def initiate_chat(
     response_model=ConversationListResponse,
     summary="Get all conversations for the current user (inbox)",
 )
-async def get_inbox(
+def get_inbox(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=50),
     current_user: dict = Depends(get_current_customer),
@@ -171,7 +171,7 @@ async def get_inbox(
     response_model=List[MessageOut],
     summary="Fetch message history (cursor-paginated, oldest-first)",
 )
-async def get_messages(
+def get_messages(
     conversation_id: str,
     before: Optional[str] = Query(None, description="ISO timestamp — load messages older than this (infinite scroll)"),
     limit: int = Query(30, ge=1, le=100),
@@ -211,7 +211,7 @@ async def get_messages(
     status_code=201,
     summary="Send a message (REST fallback — prefer client-side Supabase insert)",
 )
-async def send_message(
+def send_message(
     conversation_id: str,
     payload: MessageCreate,
     current_user: dict = Depends(get_current_customer),
@@ -251,7 +251,7 @@ async def send_message(
     "/{conversation_id}/read",
     summary="Mark a conversation as fully read for the current user",
 )
-async def mark_as_read(
+def mark_as_read(
     conversation_id: str,
     current_user: dict = Depends(get_current_customer),
 ):
@@ -279,7 +279,7 @@ async def mark_as_read(
     "/{conversation_id}/block",
     summary="Block (archive) a conversation",
 )
-async def block_conversation(
+def block_conversation(
     conversation_id: str,
     current_user: dict = Depends(get_current_customer),
 ):
@@ -298,7 +298,7 @@ async def block_conversation(
     status_code=201,
     summary="Report a conversation for abuse or spam",
 )
-async def report_conversation(
+def report_conversation(
     conversation_id: str,
     reason: str = Query(..., min_length=5, max_length=500),
     current_user: dict = Depends(get_current_customer),
@@ -328,7 +328,7 @@ async def report_conversation(
     "/reports",
     summary="Admin: List all reported conversations",
 )
-async def list_reports(
+def list_reports(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
 ):
@@ -350,7 +350,7 @@ async def list_reports(
     "/{conversation_id}/block",
     summary="Admin: Force-block a conversation (fraud, abuse, etc.)",
 )
-async def admin_block_conversation(conversation_id: str):
+def admin_block_conversation(conversation_id: str):
     """Admin override to block any conversation regardless of participant action."""
     conv = _get_conv_or_404(conversation_id)
     db.update("conversations", conversation_id, {"status": "blocked"})
@@ -362,7 +362,7 @@ async def admin_block_conversation(conversation_id: str):
     "/",
     summary="Admin: List all conversations with optional status filter",
 )
-async def admin_list_conversations(
+def admin_list_conversations(
     status: Optional[str] = Query(None, description="Filter by status: active | blocked | archived"),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),

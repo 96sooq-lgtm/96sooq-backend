@@ -25,7 +25,7 @@ class UploadResponse(BaseModel):
 from typing import List, Optional
 
 @router.post("/upload")
-async def upload_file_proxy(
+def upload_file_proxy(
     file: Optional[UploadFile] = File(None),
     files: List[UploadFile] = File(default=[]),
     folder: str = "uploads"
@@ -88,7 +88,7 @@ async def upload_file_proxy(
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 @router.post("/presigned-url/upload", response_model=UploadResponse)
-async def generate_upload_url(request: UploadRequest):
+def generate_upload_url(request: UploadRequest):
     """
     Generate a pre-signed URL to upload a file to S3.
     """
@@ -117,7 +117,7 @@ async def generate_upload_url(request: UploadRequest):
     }
 
 @router.get("/presigned-url/view")
-async def generate_view_url(file_path: str):
+def generate_view_url(file_path: str):
     """
     Generate a pre-signed URL to view a private file from S3.
     """

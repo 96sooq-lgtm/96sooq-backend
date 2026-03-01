@@ -35,7 +35,7 @@ def verify_password(password: str, hashed_password: str) -> bool:
 # AUTH
 # -------------------------------------------------
 @router.post("/signup", response_model=schemas.UserOut)
-async def admin_signup(payload: schemas.UserCreate):
+def admin_signup(payload: schemas.UserCreate):
     # Check if user exists
     existing = db.select("users", filters={"email": payload.email})
     if existing:
@@ -66,7 +66,7 @@ async def admin_signup(payload: schemas.UserCreate):
 
 
 @router.post("/login", response_model=Token)
-async def admin_login(payload: schemas.LoginRequest):
+def admin_login(payload: schemas.LoginRequest):
     users = db.select("users", filters={"email": payload.email})
     if not users:
         raise HTTPException(
@@ -88,7 +88,7 @@ async def admin_login(payload: schemas.LoginRequest):
 
 
 @router.post("/change-password")
-async def change_password(
+def change_password(
     payload: schemas.ChangePasswordRequest,
     current_user: dict = Depends(get_current_admin)
 ):
@@ -125,7 +125,7 @@ async def change_password(
 # -------------------------------------------------
 
 @router.get("/dashboard", dependencies=[Depends(get_current_admin)])
-async def admin_dashboard():
+def admin_dashboard():
     """
     Admin dashboard stats.
     Returns counts and totals — all optimized with count queries (no SELECT *).

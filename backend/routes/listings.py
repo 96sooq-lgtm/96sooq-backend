@@ -62,7 +62,7 @@ def enrich_attributes_with_type(attributes_values: dict, category_id: str) -> di
 # -------------------------------------------------
 
 @router.post("/", response_model=schemas.ListingOut, status_code=status.HTTP_201_CREATED)
-async def create_listing(
+def create_listing(
     payload: schemas.ListingCreate,
     current_user: dict = Depends(get_current_customer)
 ):
@@ -177,7 +177,7 @@ async def create_listing(
 
 
 @router.get("/", response_model=List[schemas.ListingOut])
-async def list_listings(
+def list_listings(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     category_id: Optional[str] = None,
@@ -288,7 +288,7 @@ async def list_listings(
     return listings
 
 @router.get("/my-listings", response_model=List[schemas.ListingOut])
-async def get_my_listings(
+def get_my_listings(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     status: Optional[str] = Query(None, description="Filter by status, e.g., 'active', 'draft', 'pending_approval'"),
@@ -369,7 +369,7 @@ async def get_my_listings(
 
 
 @router.get("/user/{user_id}", response_model=List[schemas.ListingOut])
-async def get_user_listings(
+def get_user_listings(
     user_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100)
@@ -413,7 +413,7 @@ async def get_user_listings(
 
 
 @router.get("/{listing_id}", response_model=schemas.ListingOut)
-async def get_listing(listing_id: str):
+def get_listing(listing_id: str):
     listing = db.select_one("listings", listing_id)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
@@ -453,7 +453,7 @@ async def get_listing(listing_id: str):
 
 
 @router.put("/{listing_id}", response_model=schemas.ListingOut)
-async def update_listing(
+def update_listing(
     listing_id: str, 
     payload: schemas.ListingUpdate,
     current_user: dict = Depends(get_current_customer)
@@ -503,7 +503,7 @@ async def update_listing(
 # -------------------------------------------------
 
 @admin_router.get("/", response_model=List[schemas.ListingOut])
-async def list_all_listings_admin(
+def list_all_listings_admin(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     status: Optional[str] = None
@@ -582,14 +582,14 @@ async def list_all_listings_admin(
 
 
 @admin_router.put("/{listing_id}/approve")
-async def approve_listing(listing_id: str):
+def approve_listing(listing_id: str):
     updated = db.update("listings", listing_id, {"status": "active"})
     if not updated:
          raise HTTPException(status_code=404, detail="Listing not found or update failed")
     return updated
 
 @admin_router.put("/{listing_id}/reject")
-async def reject_listing(listing_id: str, reason: str = Query(..., min_length=1)):
+def reject_listing(listing_id: str, reason: str = Query(..., min_length=1)):
     updated = db.update("listings", listing_id, {"status": "rejected", "rejection_reason": reason})
     if not updated:
          raise HTTPException(status_code=404, detail="Listing not found or update failed")

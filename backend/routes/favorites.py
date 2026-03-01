@@ -15,7 +15,7 @@ router = APIRouter(
 
 
 @router.post("/{listing_id}", status_code=status.HTTP_200_OK)
-async def toggle_favorite(
+def toggle_favorite(
     listing_id: str,
     current_user: dict = Depends(get_current_customer)
 ):
@@ -54,7 +54,7 @@ async def toggle_favorite(
 
 
 @router.delete("/{listing_id}", status_code=status.HTTP_200_OK)
-async def remove_favorite(
+def remove_favorite(
     listing_id: str,
     current_user: dict = Depends(get_current_customer)
 ):
@@ -76,7 +76,7 @@ async def remove_favorite(
 
 
 @router.get("/", response_model=schemas.FavoriteListResponse)
-async def list_favorites(
+def list_favorites(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     current_user: dict = Depends(get_current_customer)
@@ -142,7 +142,7 @@ async def list_favorites(
 
 
 @router.get("/check/{listing_id}")
-async def check_favorite(
+def check_favorite(
     listing_id: str,
     current_user: dict = Depends(get_current_customer)
 ):

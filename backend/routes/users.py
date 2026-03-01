@@ -16,7 +16,7 @@ admin_router = APIRouter(
 )
 
 @admin_router.get("/", response_model=schemas.AppUserAdminListResponse)
-async def list_app_users(
+def list_app_users(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
     search: Optional[str] = None
@@ -99,7 +99,7 @@ async def list_app_users(
 
 
 @admin_router.get("/{user_id}", response_model=schemas.AppUserAdminDetail)
-async def get_app_user_details(user_id: str):
+def get_app_user_details(user_id: str):
     """
     Get full details for a specific user, including store info and stats.
     """
@@ -173,7 +173,7 @@ async def get_app_user_details(user_id: str):
 
 
 @admin_router.put("/{user_id}/status")
-async def toggle_user_status(user_id: str, is_active: bool = Query(...)):
+def toggle_user_status(user_id: str, is_active: bool = Query(...)):
     """
     Admin block/unblock a user.
     """
