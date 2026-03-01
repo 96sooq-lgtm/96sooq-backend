@@ -2,19 +2,27 @@ from fastapi import APIRouter, HTTPException, Depends, status, Request, Backgrou
 from pydantic import BaseModel, HttpUrl
 from typing import Optional, List
 from db.supabase_client import db
-from utils.auth import get_current_customer
+from utils.auth import get_current_customer, get_current_admin
 from utils.paymob import PaymobManager
 from utils.logger import get_logger
 from config.settings import settings
 import uuid
 import json
+import math
 from datetime import datetime, timedelta
+from models import schemas
 
 logger = get_logger(__name__)
 
 router = APIRouter(
     prefix="/api/payments",
     tags=["payments"]
+)
+
+admin_router = APIRouter(
+    prefix="/api/admin/payments",
+    tags=["admin-payments"],
+    dependencies=[Depends(get_current_admin)]
 )
 
 # Initialize Paymob Manager
@@ -440,3 +448,100 @@ async def payment_cancel(
         "transaction_id": transaction_id,
         "message": "Payment was cancelled. Your listing was not submitted."
     }
+
+@router.get("/my-transactions", response_model=schemas.TransactionListResponse)
+async def my_transactions(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    current_user: dict = Depends(get_current_customer)
+):
+    """
+    Get all transactions for the current user.
+    """
+    def query_func(table):
+        return table.select("*", count="exact").eq("user_id", current_user["id"]).order("created_at", desc=True).range(skip, skip + limit - 1)
+        
+    result = db.query("payments", query_func)
+    
+    transactions = result.data if result.data else []
+    total = result.count if result.count is not None else len(transactions)
+    pages = math.ceil(total / limit) if total > 0 else 0
+    page = (skip // limit) + 1 if limit > 0 else 1
+    
+    return {
+        "transactions": transactions,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "pages": pages
+    }
+
+# -------------------------------------------------
+# ADMIN ENDPOINTS
+# -------------------------------------------------
+
+@admin_router.get("/transactions", response_model=schemas.AdminTransactionListResponse)
+async def list_all_transactions_admin(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    status: Optional[str] = Query(None, description="Filter by status: success, pending, failed, cancelled"),
+    search: Optional[str] = Query(None, description="Search by transaction ID or paymob ID")
+):
+    """
+    Admin: List all transactions with pagination and optional filters.
+    """
+    def query_func(table):
+        query = table.select("*", count="exact")
+        
+        if status:
+            query = query.eq("status", status)
+        
+        if search:
+            query = query.or_(f"id.ilike.%{search}%,paymob_transaction_id.ilike.%{search}%")
+            
+        return query.order("created_at", desc=True).range(skip, skip + limit - 1)
+        
+    result = db.query("payments", query_func)
+    transactions = result.data if result.data else []
+    
+    # Batch fetch user names
+    user_names_map = {}
+    if transactions:
+        user_ids = list({t["user_id"] for t in transactions if t.get("user_id")})
+        if user_ids:
+            users_res = db.select_in("app_users", "id", user_ids)
+            user_names_map = {u["id"]: u.get("name") for u in users_res} if users_res else {}
+            
+        for t in transactions:
+            t["user_name"] = user_names_map.get(t.get("user_id"))
+
+    total = result.count if result.count is not None else len(transactions)
+    pages = math.ceil(total / limit) if total > 0 else 0
+    page = (skip // limit) + 1 if limit > 0 else 1
+    
+    return {
+        "transactions": transactions,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "pages": pages
+    }
+
+
+@admin_router.get("/transactions/{transaction_id}", response_model=schemas.AdminTransactionDetail)
+async def get_transaction_detail_admin(transaction_id: str):
+    """
+    Admin: Get full details of a specific transaction.
+    """
+    transaction = db.select_one("payments", transaction_id)
+    if not transaction:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+        
+    if transaction.get("user_id"):
+        user = db.select_one("app_users", transaction["user_id"])
+        if user:
+            transaction["user_name"] = user.get("name")
+            transaction["user_email"] = user.get("email")
+            transaction["user_phone"] = user.get("phone_number")
+            
+    return transaction

@@ -438,3 +438,44 @@ class MessageOut(BaseModel):
     is_read: bool
     is_deleted: bool
     created_at: str
+
+# ─── TRANSACTIONS ─────────────────────────────────────────────────────────────
+
+class TransactionOut(BaseModel):
+    id: str
+    user_id: str
+    amount: float
+    currency: str
+    status: str
+    payment_method: Optional[str] = None
+    paymob_transaction_id: Optional[str] = None
+    metadata: Optional[dict] = None
+    created_at: str
+
+class TransactionListResponse(BaseModel):
+    transactions: List[TransactionOut]
+    total: int
+    page: int
+    limit: int
+    pages: int
+
+class AdminTransactionListItem(BaseModel):
+    id: str
+    paymob_transaction_id: Optional[str] = None
+    created_at: str
+    user_name: Optional[str] = None
+    status: str
+    amount: float
+    currency: str
+
+class AdminTransactionListResponse(BaseModel):
+    transactions: List[AdminTransactionListItem]
+    total: int
+    page: int
+    limit: int
+    pages: int
+
+class AdminTransactionDetail(TransactionOut):
+    user_name: Optional[str] = None
+    user_email: Optional[str] = None
+    user_phone: Optional[str] = None
