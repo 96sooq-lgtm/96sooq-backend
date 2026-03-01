@@ -110,7 +110,7 @@ def list_favorites(
     # Batch fetch listing details — 1 query instead of N
     listings = []
     if favorites:
-        from utils.helpers import batch_listing_images
+        from utils.helpers import batch_listing_images, batch_locations, batch_stores
 
         listing_ids = [fav["listing_id"] for fav in favorites]
         all_listings = db.select_in("listings", "id", listing_ids)
@@ -121,12 +121,51 @@ def list_favorites(
 
         # Build favorited_at lookup
         fav_dates = {fav["listing_id"]: fav.get("created_at") for fav in favorites}
+        
+        # Batch load for locations, stores, users
+        loc_ids = list({l["location_id"] for l in all_listings if l.get("location_id")})
+        locations_map = batch_locations(loc_ids)
+        
+        store_ids = list({l["store_id"] for l in all_listings if l.get("store_id")})
+        stores_map = batch_stores(store_ids)
+        
+        user_ids = list({l["user_id"] for l in all_listings if l.get("user_id")})
+        users_res = db.select_in("app_users", "id", user_ids) if user_ids else []
+        users_map = {u["id"]: u for u in users_res}
 
         for lid in listing_ids:
             listing = listings_map.get(lid)
             if listing:
                 listing["images"] = images_map.get(lid, [])
                 listing["favorited_at"] = fav_dates.get(lid)
+                listing["is_favorite"] = True
+                
+                if listing.get("location_id"):
+                    loc = locations_map.get(listing["location_id"])
+                    if loc:
+                        listing["location_details"] = loc
+                        
+                seller_phone = None
+                if listing.get("store_id"):
+                    store = stores_map.get(listing["store_id"])
+                    if store:
+                        listing["seller_type"] = "store"
+                        listing["store_name"] = store.get("name_en") or store.get("name")
+                        listing["store_logo"] = store.get("logo")
+                        seller_phone = store.get("store_number")
+                else:
+                    listing["seller_type"] = "individual"
+                
+                if listing.get("user_id"):
+                    user = users_map.get(listing["user_id"])
+                    if user:
+                        listing["user_name"] = user.get("name")
+                        listing["user_profile_picture"] = user.get("profile_picture")
+                        if not seller_phone:
+                            seller_phone = user.get("phone_number")
+                        
+                listing["seller_phone_number"] = seller_phone
+
                 listings.append(listing)
 
     page = (skip // limit) + 1 if limit else 1
