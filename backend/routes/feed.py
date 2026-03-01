@@ -6,7 +6,7 @@ from fastapi import APIRouter, Query, HTTPException
 from typing import Optional, List
 from db.supabase_client import db
 from utils.geo import resolve_location, get_wilayat_names_in_governorate, get_wilayats_for_governorates
-from utils.helpers import batch_listing_images, batch_locations
+from utils.helpers import batch_listing_images, batch_locations, get_viewable_image_url
 from utils.logger import get_logger
 import math
 import random
@@ -80,6 +80,7 @@ def _fetch_organic_listings(
     place_names: Optional[List[str]] = None,
     location_ids: Optional[List[str]] = None,
     category_id: Optional[str] = None,
+    category_ids: Optional[List[str]] = None,
     condition: Optional[str] = None,
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
@@ -103,6 +104,8 @@ def _fetch_organic_listings(
             query = query.in_("location_id", location_ids)
         if category_id:
             query = query.eq("category_id", category_id)
+        if category_ids:
+            query = query.in_("category_id", category_ids)
         if condition:
             query = query.eq("condition", condition)
         if min_price is not None:
@@ -130,6 +133,8 @@ def _fetch_organic_listings(
             query = query.in_("location_id", location_ids)
         if category_id:
             query = query.eq("category_id", category_id)
+        if category_ids:
+            query = query.in_("category_id", category_ids)
         if condition:
             query = query.eq("condition", condition)
         if min_price is not None:
@@ -158,8 +163,8 @@ def _fetch_organic_listings(
 
 @router.get("/")
 async def get_feed(
-    lat: float = Query(..., description="User's latitude"),
-    lng: float = Query(..., description="User's longitude"),
+    lat: Optional[float] = Query(None, description="User's latitude (optional)"),
+    lng: Optional[float] = Query(None, description="User's longitude (optional)"),
     page: int = Query(0, ge=0, description="Page number (0-based)"),
     limit: int = Query(20, ge=1, le=50, description="Items per page"),
     category_id: Optional[str] = Query(None, description="Filter by category"),
@@ -179,10 +184,15 @@ async def get_feed(
     5. Mix: promoted at top + organic below
     """
     # 1. Resolve location
-    location = resolve_location(lat, lng)
-    wilayat = location.get("wilayat")
-    governorate = location.get("governorate")
-    nearby_gov_ids = location.get("nearby_governorate_ids", [])
+    wilayat = None
+    governorate = None
+    nearby_gov_ids = []
+    
+    if lat is not None and lng is not None:
+        location = resolve_location(lat, lng)
+        wilayat = location.get("wilayat")
+        governorate = location.get("governorate")
+        nearby_gov_ids = location.get("nearby_governorate_ids", [])
 
     wilayat_name = wilayat["name_en"] if wilayat else None
     gov_id = governorate["id"] if governorate else None
@@ -203,10 +213,18 @@ async def get_feed(
         )
 
         if promoted_ids:
+            if category_id:
+                all_promoted = _fetch_listings_by_ids(promoted_ids)
+                promoted_ids = [p["id"] for p in all_promoted if p.get("category_id") == category_id]
+                
             # Random rotation for fair exposure
             random.shuffle(promoted_ids)
             selected_ids = promoted_ids[:PROMOTED_SLOTS_PER_PAGE]
-            promoted_listings = _fetch_listings_by_ids(selected_ids)
+            
+            if category_id:
+                promoted_listings = [p for p in all_promoted if p["id"] in selected_ids]
+            else:
+                promoted_listings = _fetch_listings_by_ids(selected_ids)
 
             # Track impressions for served banners
             for pid in [l["id"] for l in promoted_listings]:
@@ -334,8 +352,8 @@ async def get_feed(
 
 @router.get("/offers")
 async def get_location_offers(
-    lat: float = Query(..., description="User's latitude"),
-    lng: float = Query(..., description="User's longitude"),
+    lat: Optional[float] = Query(None, description="User's latitude (optional)"),
+    lng: Optional[float] = Query(None, description="User's longitude (optional)"),
     page: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=50),
 ):
@@ -344,9 +362,13 @@ async def get_location_offers(
     Returns active offer-type banners relevant to user's location.
     Offers with no location (admin-created global) are always included.
     """
-    location = resolve_location(lat, lng)
-    wilayat = location.get("wilayat")
-    governorate = location.get("governorate")
+    wilayat = None
+    governorate = None
+    
+    if lat is not None and lng is not None:
+        location = resolve_location(lat, lng)
+        wilayat = location.get("wilayat")
+        governorate = location.get("governorate")
 
     wilayat_name = wilayat["name_en"] if wilayat else None
     gov_id = governorate["id"] if governorate else None
@@ -418,8 +440,8 @@ async def get_location_offers(
 
 @router.get("/nearby-stores")
 async def get_nearby_stores(
-    lat: float = Query(..., description="User's latitude"),
-    lng: float = Query(..., description="User's longitude"),
+    lat: Optional[float] = Query(None, description="User's latitude (optional)"),
+    lng: Optional[float] = Query(None, description="User's longitude (optional)"),
     page: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=50),
     min_rating: Optional[float] = Query(None, description="Minimum average rating")
@@ -428,10 +450,15 @@ async def get_nearby_stores(
     Location-aware store listing.
     Shows stores in user's wilayat/governorate with expanding radius.
     """
-    location = resolve_location(lat, lng)
-    wilayat = location.get("wilayat")
-    governorate = location.get("governorate")
-    nearby_gov_ids = location.get("nearby_governorate_ids", [])
+    wilayat = None
+    governorate = None
+    nearby_gov_ids = []
+    
+    if lat is not None and lng is not None:
+        location = resolve_location(lat, lng)
+        wilayat = location.get("wilayat")
+        governorate = location.get("governorate")
+        nearby_gov_ids = location.get("nearby_governorate_ids", [])
 
     wilayat_name = wilayat["name_en"] if wilayat else None
     gov_id = governorate["id"] if governorate else None
@@ -559,3 +586,231 @@ async def resolve_user_location(
             "name_ar": governorate["name_ar"] if governorate else None,
         },
     }
+
+
+@router.get("/category/{category_id}")
+async def get_category_feed(
+    category_id: str,
+    lat: Optional[float] = Query(None, description="User's latitude (optional)"),
+    lng: Optional[float] = Query(None, description="User's longitude (optional)"),
+    page: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=50),
+    condition: Optional[str] = Query(None, description="Filter: 'new' or 'used'"),
+    min_price: Optional[float] = Query(None, description="Minimum price"),
+    max_price: Optional[float] = Query(None, description="Maximum price"),
+    seller_type: Optional[str] = Query(None, description="Filter by seller type: 'individual' or 'store'")
+):
+    """
+    Location-aware feed for a specific category.
+    Returns category info, subcategories, and the product listings.
+    """
+    # 1. Fetch category details
+    category = db.select_one("categories", category_id)
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
+        
+    if category.get("image_url"):
+        category["image_url"] = get_viewable_image_url(category["image_url"])
+
+    # 2. Fetch list of direct subcategories vs descendants
+    all_active = db.select("categories", filters={"is_active": True, "is_deleted": False})
+    
+    # Direct children for the UI icons/list
+    subcategories = [c for c in all_active if c.get("parent_id") == category_id]
+    for subcat in subcategories:
+        if subcat.get("image_url"):
+            subcat["image_url"] = get_viewable_image_url(subcat["image_url"])
+
+    # All descendants for the listing search (recursive)
+    def get_descendants(parent_id, categories):
+        desc = []
+        for c in categories:
+            if c.get("parent_id") == parent_id:
+                desc.append(c["id"])
+                desc.extend(get_descendants(c["id"], categories))
+        return desc
+    
+    target_category_ids = [category_id] + get_descendants(category_id, all_active)
+
+    # 3. Resolve location (if provided)
+    wilayat_name = None
+    gov_id = None
+    nearby_gov_ids = []
+    expansion_level = "all"
+    
+    resolved_location_data = {
+        "wilayat_en": None,
+        "wilayat_ar": None,
+        "governorate_en": None,
+        "governorate_ar": None,
+        "expansion_level": "all",
+    }
+    
+    if lat is not None and lng is not None:
+        location = resolve_location(lat, lng)
+        wilayat = location.get("wilayat")
+        governorate = location.get("governorate")
+        nearby_gov_ids = location.get("nearby_governorate_ids", [])
+
+        wilayat_name = wilayat["name_en"] if wilayat else None
+        gov_id = governorate["id"] if governorate else None
+        expansion_level = "wilayat"
+        
+        resolved_location_data = {
+            "wilayat_en": wilayat["name_en"] if wilayat else None,
+            "wilayat_ar": wilayat["name_ar"] if wilayat else None,
+            "governorate_en": governorate["name_en"] if governorate else None,
+            "governorate_ar": governorate["name_ar"] if governorate else None,
+            "expansion_level": expansion_level,
+        }
+
+    # 4. Fetch listings with location-aware expansion
+    skip = page * limit
+    organic_listings = []
+    total_organic = 0
+    
+    # NEW: Handle promoted listings in category feed
+    promoted_listings = []
+    promoted_ids = []
+    
+    if page == 0:
+        # Fetch all possible promoted banners for this location
+        p_ids = _get_promoted_listing_ids(
+            wilayat_name=wilayat_name,
+            governorate_id=gov_id,
+        )
+        
+        if p_ids:
+            # Filter by matching category hierarchy in memory
+            # (Fetching up to 100 promoted items to check hierarchy is fast)
+            all_promoted = _fetch_listings_by_ids(p_ids)
+            
+            # Match hierarchy: listing category must be the target or its child
+            target_ids_set = set(target_category_ids)
+            promoted_ids = [p["id"] for p in all_promoted if p.get("category_id") in target_ids_set]
+            
+            # Shuffle and choose top 3
+            random.shuffle(promoted_ids)
+            selected_ids = promoted_ids[:PROMOTED_SLOTS_PER_PAGE]
+            
+            promoted_listings = [p for p in all_promoted if p["id"] in selected_ids]
+            
+            for listing in promoted_listings:
+                listing["is_promoted"] = True
+            
+            # Prepare organic limits to account for promoted slots
+            organic_limit = limit - len(promoted_listings)
+            skip_offset = 0 # page 0
+        else:
+            organic_limit = limit
+            skip_offset = 0
+    else:
+        # For pages > 0, we fetch full organic limit
+        # Calculation should be consistent with the regular feed
+        # We assume 3 slots were taken on page 0
+        organic_limit = limit
+        skip_offset = page * (limit - PROMOTED_SLOTS_PER_PAGE) if page > 0 else 0
+        
+    promoted_ids_to_exclude = [l["id"] for l in promoted_listings]
+
+    # Level 1: Wilayat
+    if wilayat_name:
+        organic_listings, total_organic = _fetch_organic_listings(
+            place_names=[wilayat_name],
+            category_ids=target_category_ids,
+            condition=condition,
+            min_price=min_price,
+            max_price=max_price,
+            seller_type=seller_type,
+            exclude_ids=promoted_ids_to_exclude,
+            skip=skip_offset,
+            limit=organic_limit,
+        )
+
+    # Level 2: Expand to governorate
+    if len(organic_listings) < MIN_RESULTS_THRESHOLD and gov_id:
+        expansion_level = "governorate"
+        resolved_location_data["expansion_level"] = expansion_level
+        wilayat_names = get_wilayat_names_in_governorate(gov_id)
+        if wilayat_names:
+            organic_listings, total_organic = _fetch_organic_listings(
+                place_names=wilayat_names,
+                category_ids=target_category_ids,
+                condition=condition,
+                min_price=min_price,
+                max_price=max_price,
+                seller_type=seller_type,
+                exclude_ids=promoted_ids_to_exclude,
+                skip=skip_offset,
+                limit=organic_limit,
+            )
+
+    # Level 3: Expand to nearby governorates
+    if len(organic_listings) < MIN_RESULTS_THRESHOLD and nearby_gov_ids:
+        expansion_level = "nearby"
+        resolved_location_data["expansion_level"] = expansion_level
+        nearest_3 = nearby_gov_ids[:3]
+        wilayat_names = get_wilayats_for_governorates(nearest_3)
+        if wilayat_names:
+            organic_listings, total_organic = _fetch_organic_listings(
+                place_names=wilayat_names,
+                category_ids=target_category_ids,
+                condition=condition,
+                min_price=min_price,
+                max_price=max_price,
+                seller_type=seller_type,
+                exclude_ids=promoted_ids_to_exclude,
+                skip=skip_offset,
+                limit=organic_limit,
+            )
+
+    # Level 4: All Oman
+    if len(organic_listings) < MIN_RESULTS_THRESHOLD:
+        expansion_level = "all"
+        resolved_location_data["expansion_level"] = expansion_level
+        organic_listings, total_organic = _fetch_organic_listings(
+            category_ids=target_category_ids,
+            condition=condition,
+            min_price=min_price,
+            max_price=max_price,
+            seller_type=seller_type,
+            exclude_ids=promoted_ids_to_exclude,
+            skip=skip_offset,
+            limit=organic_limit,
+        )
+
+    for listing in organic_listings:
+        listing["is_promoted"] = False
+
+    # 5. Combine and enrich
+    all_listings = promoted_listings + organic_listings
+    
+    if all_listings:
+        listing_ids = [l["id"] for l in all_listings]
+        images_map = batch_listing_images(listing_ids)
+
+        loc_ids = list({l["location_id"] for l in all_listings if l.get("location_id")})
+        locations_map = batch_locations(loc_ids)
+
+        for l in all_listings:
+            l["images"] = images_map.get(l["id"], [])
+            if l.get("location_id"):
+                loc = locations_map.get(l["location_id"])
+                if loc:
+                    l["location_details"] = loc
+
+    total = total_organic + (len(promoted_listings) if page == 0 else 0)
+    pages = math.ceil(total / limit) if total > 0 else 0
+
+    return {
+        "category": category,
+        "subcategories": subcategories,
+        "listings": all_listings,
+        "resolved_location": resolved_location_data,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "pages": pages,
+    }
+
+
