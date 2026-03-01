@@ -91,6 +91,37 @@ class CustomerOut(BaseModel):
 	token_type: Optional[str] = None
 
 
+# App User Management for Admins
+class AppUserAdminListItem(BaseModel):
+    id: str
+    name: str
+    phone_number: str
+    email: Optional[str] = None
+    is_active: bool
+    is_store: bool
+    
+class AppUserAdminDetail(BaseModel):
+    id: str
+    name: str
+    phone_number: str
+    email: Optional[str] = None
+    is_active: bool
+    provider: Optional[str] = None
+    profile_picture: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    is_store: bool
+    store_details: Optional[dict] = None
+    stats: Optional[dict] = None  # Add user stats (total listings, transactions, etc)
+    
+class AppUserAdminListResponse(BaseModel):
+    users: List[AppUserAdminListItem]
+    total: int
+    page: int
+    limit: int
+    pages: int
+
+
 # ----------------------------------------------------------------
 # NEW MODELS - Pricing, Stores, Listings
 # ----------------------------------------------------------------
@@ -261,6 +292,9 @@ class ListingOut(BaseModel):
     location_id: Optional[str] = None
     location_details: Optional[dict] = None # Populated with location name/type
     created_at: Optional[str] = None
+    seller_type: str = "individual"
+    store_name: Optional[str] = None
+    store_logo: Optional[str] = None
 
 # Favorites
 class FavoriteListingOut(ListingOut):

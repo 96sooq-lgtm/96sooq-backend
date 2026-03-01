@@ -159,7 +159,13 @@ async def create_listing(
         
     listing_id = listing["id"]
     
-    # 6. Handle Images — batch insert in one query
+    # 6. Inject store / seller info for response
+    listing["seller_type"] = "store" if is_store_user else "individual"
+    if is_store_user:
+        listing["store_name"] = user_stores[0].get("name_en") or user_stores[0].get("name")
+        listing["store_logo"] = user_stores[0].get("logo")
+    
+    # 7. Handle Images — batch insert in one query
     if payload.images:
         image_records = [
             {"listing_id": listing_id, "image_url": url, "is_main": (i == 0), "display_order": i}
