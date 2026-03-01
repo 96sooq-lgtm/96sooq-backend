@@ -8,6 +8,7 @@ from db.supabase_client import db
 from models import schemas
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/admin/login")
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/admin/login", auto_error=False)
 
 CUSTOMER_TOKEN_EXPIRE_DAYS = 90   # Mobile app — token valid until logout
 ADMIN_TOKEN_EXPIRE_DAYS = 1       # Admin panel — short-lived for security
@@ -106,5 +107,27 @@ def decode_customer_token(token: str) -> dict:
 
     if not user:
         raise credentials_exception
+
+    return user[0]
+
+async def get_optional_current_customer(token: Optional[str] = Depends(oauth2_scheme_optional)):
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        sub: str = payload.get("sub")
+        role: str = payload.get("role")
+        if sub is None or role != "customer":
+            return None
+    except JWTError:
+        return None
+
+    if "@" in sub:
+        user = db.select("app_users", filters={"email": sub})
+    else:
+        user = db.select("app_users", filters={"phone_number": sub})
+
+    if not user:
+        return None
 
     return user[0]

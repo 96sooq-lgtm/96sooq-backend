@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, status, Depends, Query
 from models import schemas
 from db.supabase_client import db
-from utils.auth import get_current_customer, get_current_admin
+from utils.auth import get_current_customer, get_current_admin, get_optional_current_customer
 from utils.helpers import get_viewable_image_url, batch_listing_images, batch_locations, batch_stores, batch_categories
 from utils.logger import get_logger
 from typing import List, Optional
@@ -165,6 +165,10 @@ def create_listing(
         listing["store_name"] = user_stores[0].get("name_en") or user_stores[0].get("name")
         listing["store_logo"] = user_stores[0].get("logo")
     
+    listing["user_name"] = current_user.get("name")
+    listing["user_profile_picture"] = current_user.get("profile_picture")
+    listing["is_favorite"] = False
+    
     # 7. Handle Images — batch insert in one query
     if payload.images:
         image_records = [
@@ -188,7 +192,8 @@ def list_listings(
     min_price: Optional[float] = Query(None, description="Minimum price"),
     max_price: Optional[float] = Query(None, description="Maximum price"),
     seller_type: Optional[str] = Query(None, description="Filter by seller type: 'individual' or 'store'"),
-    condition: Optional[str] = Query(None, description="Filter by condition: 'new' or 'used'")
+    condition: Optional[str] = Query(None, description="Filter by condition: 'new' or 'used'"),
+    current_user: Optional[dict] = Depends(get_optional_current_customer)
 ):
     """
     List active listings with filters.
@@ -259,10 +264,17 @@ def list_listings(
         user_ids = list({l["user_id"] for l in listings if l.get("user_id")})
         users_res = db.select_in("app_users", "id", user_ids) if user_ids else []
         users_map = {u["id"]: u for u in users_res}
+        
+        # Batch fetch favorites if user logged in
+        fav_set = set()
+        if current_user:
+            favs = db.select("favorites", filters={"user_id": current_user["id"]})
+            fav_set = {f["listing_id"] for f in favs}
 
         for listing in listings:
             listing["images"] = images_map.get(listing["id"], [])
             listing["promotions"] = promotions_map.get(listing["id"], [])
+            listing["is_favorite"] = listing["id"] in fav_set
             
             if listing.get("location_id"):
                 loc = locations_map.get(listing["location_id"])
@@ -278,10 +290,13 @@ def list_listings(
                     listing["store_logo"] = store.get("logo")
                     seller_phone = store.get("store_number")
             
-            if not seller_phone and listing.get("user_id"):
+            if listing.get("user_id"):
                 user = users_map.get(listing["user_id"])
                 if user:
-                    seller_phone = user.get("phone_number")
+                    listing["user_name"] = user.get("name")
+                    listing["user_profile_picture"] = user.get("profile_picture")
+                    if not seller_phone:
+                        seller_phone = user.get("phone_number")
                     
             listing["seller_phone_number"] = seller_phone
 
@@ -339,10 +354,16 @@ def get_my_listings(
         # Batch fetch users for phone numbers
         users_res = db.select_in("app_users", "id", [user_id])
         users_map = {u["id"]: u for u in users_res}
+        
+        # Batch fetch favorites for current user
+        fav_set = set()
+        favs = db.select("favorites", filters={"user_id": current_user["id"]})
+        fav_set = {f["listing_id"] for f in favs}
 
         for listing in listings:
             listing["images"] = images_map.get(listing["id"], [])
             listing["promotions"] = promotions_map.get(listing["id"], [])
+            listing["is_favorite"] = listing["id"] in fav_set
             
             if listing.get("location_id"):
                 loc = locations_map.get(listing["location_id"])
@@ -358,10 +379,13 @@ def get_my_listings(
                     listing["store_logo"] = store.get("logo")
                     seller_phone = store.get("store_number")
             
-            if not seller_phone and listing.get("user_id"):
+            if listing.get("user_id"):
                 user = users_map.get(listing["user_id"])
                 if user:
-                    seller_phone = user.get("phone_number")
+                    listing["user_name"] = user.get("name")
+                    listing["user_profile_picture"] = user.get("profile_picture")
+                    if not seller_phone:
+                        seller_phone = user.get("phone_number")
                     
             listing["seller_phone_number"] = seller_phone
 
@@ -372,7 +396,8 @@ def get_my_listings(
 def get_user_listings(
     user_id: str,
     skip: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100)
+    limit: int = Query(20, ge=1, le=100),
+    current_user: Optional[dict] = Depends(get_optional_current_customer)
 ):
     """
     Get all active listings for a specific individual user (public view).
@@ -398,8 +423,15 @@ def get_user_listings(
         users_res = db.select_one("app_users", user_id)
         seller_phone = users_res.get("phone_number") if users_res else None
         
+        # Batch fetch favorites if user logged in
+        fav_set = set()
+        if current_user:
+            favs = db.select("favorites", filters={"user_id": current_user["id"]})
+            fav_set = {f["listing_id"] for f in favs}
+        
         for listing in listings:
             listing["images"] = images_map.get(listing["id"], [])
+            listing["is_favorite"] = listing["id"] in fav_set
             
             if listing.get("location_id"):
                 loc = locations_map.get(listing["location_id"])
@@ -407,13 +439,18 @@ def get_user_listings(
                     listing["location_details"] = loc
             
             listing["seller_type"] = "individual"
+            if users_res:
+                listing["user_name"] = users_res.get("name")
+                listing["user_profile_picture"] = users_res.get("profile_picture")
+                if not seller_phone:
+                     seller_phone = users_res.get("phone_number")
             listing["seller_phone_number"] = seller_phone
 
     return listings
 
 
 @router.get("/{listing_id}", response_model=schemas.ListingOut)
-def get_listing(listing_id: str):
+def get_listing(listing_id: str, current_user: Optional[dict] = Depends(get_optional_current_customer)):
     listing = db.select_one("listings", listing_id)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
@@ -436,12 +473,20 @@ def get_listing(listing_id: str):
             listing["store_logo"] = store.get("logo")
             seller_phone = store.get("store_number")
             
-    if not seller_phone and listing.get("user_id"):
+    if listing.get("user_id"):
         user = db.select_one("app_users", listing["user_id"])
         if user:
-            seller_phone = user.get("phone_number")
+            listing["user_name"] = user.get("name")
+            listing["user_profile_picture"] = user.get("profile_picture")
+            if not seller_phone:
+                seller_phone = user.get("phone_number")
             
     listing["seller_phone_number"] = seller_phone
+    
+    listing["is_favorite"] = False
+    if current_user:
+        fav = db.select("favorites", filters={"user_id": current_user["id"], "listing_id": listing_id})
+        listing["is_favorite"] = bool(fav)
     
     # Fetch active promotions
     now_str = datetime.utcnow().isoformat()
@@ -557,10 +602,13 @@ def list_all_listings_admin(
                     listing["store_logo"] = store.get("logo")
                     seller_phone = store.get("store_number")
             
-            if not seller_phone and listing.get("user_id"):
+            if listing.get("user_id"):
                 user = users_map.get(listing["user_id"])
                 if user:
-                    seller_phone = user.get("phone_number")
+                    listing["user_name"] = user.get("name")
+                    listing["user_profile_picture"] = user.get("profile_picture")
+                    if not seller_phone:
+                        seller_phone = user.get("phone_number")
                     
             listing["seller_phone_number"] = seller_phone
             

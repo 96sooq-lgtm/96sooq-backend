@@ -2,11 +2,12 @@
 Location-aware feed endpoints.
 Provides the main listing feed with promoted listings and expanding radius logic.
 """
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Depends
 from typing import Optional, List
 from db.supabase_client import db
+from utils.auth import get_optional_current_customer
 from utils.geo import resolve_location, get_wilayat_names_in_governorate, get_wilayats_for_governorates
-from utils.helpers import batch_listing_images, batch_locations, get_viewable_image_url
+from utils.helpers import batch_listing_images, batch_locations, get_viewable_image_url, batch_stores
 from utils.logger import get_logger
 import math
 import random
@@ -171,7 +172,8 @@ def get_feed(
     condition: Optional[str] = Query(None, description="Filter: 'new' or 'used'"),
     min_price: Optional[float] = Query(None, description="Minimum price"),
     max_price: Optional[float] = Query(None, description="Maximum price"),
-    seller_type: Optional[str] = Query(None, description="Filter by seller type: 'individual' or 'store'")
+    seller_type: Optional[str] = Query(None, description="Filter by seller type: 'individual' or 'store'"),
+    current_user: Optional[dict] = Depends(get_optional_current_customer)
 ):
     """
     Main location-aware listing feed with promoted listings.
@@ -322,13 +324,48 @@ def get_feed(
 
         location_ids = list({l["location_id"] for l in all_listings if l.get("location_id")})
         locations_map = batch_locations(location_ids)
+        
+        store_ids = list({l["store_id"] for l in all_listings if l.get("store_id")})
+        stores_map = batch_stores(store_ids)
+        
+        user_ids = list({l["user_id"] for l in all_listings if l.get("user_id")})
+        users_res = db.select_in("app_users", "id", user_ids) if user_ids else []
+        users_map = {u["id"]: u for u in users_res}
+        
+        fav_set = set()
+        if current_user:
+            favs = db.select("favorites", filters={"user_id": current_user["id"]})
+            fav_set = {f["listing_id"] for f in favs}
 
         for listing in all_listings:
             listing["images"] = images_map.get(listing["id"], [])
+            listing["is_favorite"] = listing["id"] in fav_set
+            
             if listing.get("location_id"):
                 loc = locations_map.get(listing["location_id"])
                 if loc:
                     listing["location_details"] = loc
+                    
+            seller_phone = None
+            if listing.get("store_id"):
+                store = stores_map.get(listing["store_id"])
+                if store:
+                    listing["seller_type"] = "store"
+                    listing["store_name"] = store.get("name_en") or store.get("name")
+                    listing["store_logo"] = store.get("logo")
+                    seller_phone = store.get("store_number")
+            else:
+                listing["seller_type"] = "individual"
+            
+            if listing.get("user_id"):
+                user = users_map.get(listing["user_id"])
+                if user:
+                    listing["user_name"] = user.get("name")
+                    listing["user_profile_picture"] = user.get("profile_picture")
+                    if not seller_phone:
+                        seller_phone = user.get("phone_number")
+                    
+            listing["seller_phone_number"] = seller_phone
 
     # 6. Pagination math
     total = total_organic + (len(promoted_listings) if page == 0 else 0)
@@ -598,7 +635,8 @@ def get_category_feed(
     condition: Optional[str] = Query(None, description="Filter: 'new' or 'used'"),
     min_price: Optional[float] = Query(None, description="Minimum price"),
     max_price: Optional[float] = Query(None, description="Maximum price"),
-    seller_type: Optional[str] = Query(None, description="Filter by seller type: 'individual' or 'store'")
+    seller_type: Optional[str] = Query(None, description="Filter by seller type: 'individual' or 'store'"),
+    current_user: Optional[dict] = Depends(get_optional_current_customer)
 ):
     """
     Location-aware feed for a specific category.
@@ -791,14 +829,47 @@ def get_category_feed(
 
         loc_ids = list({l["location_id"] for l in all_listings if l.get("location_id")})
         locations_map = batch_locations(loc_ids)
+        
+        store_ids = list({l["store_id"] for l in all_listings if l.get("store_id")})
+        stores_map = batch_stores(store_ids)
+        
+        user_ids = list({l["user_id"] for l in all_listings if l.get("user_id")})
+        users_res = db.select_in("app_users", "id", user_ids) if user_ids else []
+        users_map = {u["id"]: u for u in users_res}
+        
+        fav_set = set()
+        if current_user:
+            favs = db.select("favorites", filters={"user_id": current_user["id"]})
+            fav_set = {f["listing_id"] for f in favs}
 
         for l in all_listings:
             l["images"] = images_map.get(l["id"], [])
+            l["is_favorite"] = l["id"] in fav_set
             if l.get("location_id"):
                 loc = locations_map.get(l["location_id"])
                 if loc:
                     l["location_details"] = loc
-
+                    
+            seller_phone = None
+            if l.get("store_id"):
+                store = stores_map.get(l.get("store_id"))
+                if store:
+                    l["seller_type"] = "store"
+                    l["store_name"] = store.get("name_en") or store.get("name")
+                    l["store_logo"] = store.get("logo")
+                    seller_phone = store.get("store_number")
+            else:
+                l["seller_type"] = "individual"
+            
+            if l.get("user_id"):
+                user = users_map.get(l.get("user_id"))
+                if user:
+                    l["user_name"] = user.get("name")
+                    l["user_profile_picture"] = user.get("profile_picture")
+                    if not seller_phone:
+                        seller_phone = user.get("phone_number")
+                    
+            l["seller_phone_number"] = seller_phone
     total = total_organic + (len(promoted_listings) if page == 0 else 0)
     pages = math.ceil(total / limit) if total > 0 else 0
 
