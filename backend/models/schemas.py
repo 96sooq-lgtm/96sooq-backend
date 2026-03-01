@@ -289,6 +289,10 @@ class ListingOut(BaseModel):
     status: str
     rejection_reason: Optional[str] = None
     attributes_values: Optional[dict] = None
+    category_name_en: Optional[str] = None
+    category_name_ar: Optional[str] = None
+    parent_category_name_en: Optional[str] = None
+    parent_category_name_ar: Optional[str] = None
     location_id: Optional[str] = None
     location_details: Optional[dict] = None # Populated with location name/type
     created_at: Optional[str] = None

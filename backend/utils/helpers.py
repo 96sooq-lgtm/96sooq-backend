@@ -83,3 +83,14 @@ def batch_stores(store_ids: List[str]) -> Dict[str, Dict]:
     stores = db.select_in("stores", "id", list(set(store_ids)))
     return {store["id"]: store for store in stores}
 
+def batch_categories(category_ids: List[str]) -> Dict[str, Dict]:
+    """
+    Fetch categories for multiple IDs in a single DB query.
+    Returns a dict: { category_id: {category data} }
+    """
+    if not category_ids:
+        return {}
+
+    categories = db.select_in("categories", "id", list(set(category_ids)))
+    return {cat["id"]: cat for cat in categories}
+

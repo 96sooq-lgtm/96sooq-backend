@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, status, Depends, Query
 from models import schemas
 from db.supabase_client import db
 from utils.auth import get_current_customer, get_current_admin
-from utils.helpers import get_viewable_image_url, batch_listing_images, batch_locations, batch_stores
+from utils.helpers import get_viewable_image_url, batch_listing_images, batch_locations, batch_stores, batch_categories
 from utils.logger import get_logger
 from typing import List, Optional
 from datetime import datetime
@@ -537,6 +537,14 @@ async def list_all_listings_admin(
         users_res = db.select_in("app_users", "id", user_ids) if user_ids else []
         users_map = {u["id"]: u for u in users_res}
         
+        # Batch fetch categories
+        category_ids = list({l["category_id"] for l in listings if l.get("category_id")})
+        categories_map = batch_categories(category_ids)
+        
+        # Batch fetch parent categories if needed
+        parent_category_ids = list({c.get("parent_id") for c in categories_map.values() if c.get("parent_id")})
+        parent_categories_map = batch_categories(parent_category_ids) if parent_category_ids else {}
+
         for listing in listings:
             listing["images"] = images_map.get(listing["id"], [])
             
@@ -555,6 +563,20 @@ async def list_all_listings_admin(
                     seller_phone = user.get("phone_number")
                     
             listing["seller_phone_number"] = seller_phone
+            
+            # Categories
+            cat = categories_map.get(listing.get("category_id"))
+            if cat:
+                listing["category_name_en"] = cat.get("name_en")
+                listing["category_name_ar"] = cat.get("name_ar")
+                
+                parent_id = cat.get("parent_id")
+                if parent_id:
+                    parent_cat = parent_categories_map.get(parent_id)
+                    if parent_cat:
+                        listing["parent_category_name_en"] = parent_cat.get("name_en")
+                        listing["parent_category_name_ar"] = parent_cat.get("name_ar")
+
     
     return listings
 
