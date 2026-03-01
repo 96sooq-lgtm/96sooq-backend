@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, status, Depends, Query
 from models import schemas
 from db.supabase_client import db
 from utils.auth import get_current_customer, get_current_admin
-from utils.helpers import get_viewable_image_url, batch_listing_images, batch_locations
+from utils.helpers import get_viewable_image_url, batch_listing_images, batch_locations, batch_stores
 from utils.logger import get_logger
 from typing import List, Optional
 from datetime import datetime
@@ -215,12 +215,24 @@ async def list_listings(
         location_ids = list({l["location_id"] for l in listings if l.get("location_id")})
         locations_map = batch_locations(location_ids)
 
+        # Batch fetch stores
+        store_ids = list({l["store_id"] for l in listings if l.get("store_id")})
+        stores_map = batch_stores(store_ids)
+
         for listing in listings:
             listing["images"] = images_map.get(listing["id"], [])
+            
             if listing.get("location_id"):
                 loc = locations_map.get(listing["location_id"])
                 if loc:
                     listing["location_details"] = loc
+                    
+            if listing.get("store_id"):
+                store = stores_map.get(listing["store_id"])
+                if store:
+                    listing["seller_type"] = "store"
+                    listing["store_name"] = store.get("name_en") or store.get("name")
+                    listing["store_logo"] = store.get("logo")
 
     return listings
 
@@ -239,6 +251,13 @@ async def get_listing(listing_id: str):
         loc = db.select_one("locations", listing["location_id"])
         if loc:
              listing["location_details"] = loc
+             
+    if listing.get("store_id"):
+        store = db.select_one("stores", listing["store_id"])
+        if store:
+            listing["seller_type"] = "store"
+            listing["store_name"] = store.get("name_en") or store.get("name")
+            listing["store_logo"] = store.get("logo")
     
     return listing
 
@@ -318,8 +337,20 @@ async def list_all_listings_admin(
     if listings:
         listing_ids = [l["id"] for l in listings]
         images_map = batch_listing_images(listing_ids)
+        
+        # Batch fetch stores
+        store_ids = list({l["store_id"] for l in listings if l.get("store_id")})
+        stores_map = batch_stores(store_ids)
+        
         for listing in listings:
             listing["images"] = images_map.get(listing["id"], [])
+            
+            if listing.get("store_id"):
+                store = stores_map.get(listing["store_id"])
+                if store:
+                    listing["seller_type"] = "store"
+                    listing["store_name"] = store.get("name_en") or store.get("name")
+                    listing["store_logo"] = store.get("logo")
     
     return listings
 

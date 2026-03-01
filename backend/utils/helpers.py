@@ -70,3 +70,16 @@ def batch_locations(location_ids: List[str]) -> Dict[str, Dict]:
 
     locations = db.select_in("locations", "id", list(set(location_ids)))
     return {loc["id"]: loc for loc in locations}
+
+
+def batch_stores(store_ids: List[str]) -> Dict[str, Dict]:
+    """
+    Fetch stores for multiple IDs in a single DB query.
+    Returns a dict: { store_id: {store data} }
+    """
+    if not store_ids:
+        return {}
+
+    stores = db.select_in("stores", "id", list(set(store_ids)))
+    return {store["id"]: store for store in stores}
+

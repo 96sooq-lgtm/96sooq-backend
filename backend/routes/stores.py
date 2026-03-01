@@ -418,6 +418,10 @@ async def get_store_listings(
         images_map = batch_listing_images(listing_ids)
         for listing in listings:
             listing["images"] = images_map.get(listing["id"], [])
+            # Inject store info since this is a store listing
+            listing["seller_type"] = "store"
+            listing["store_name"] = store.get("name_en") or store.get("name")
+            listing["store_logo"] = store.get("logo")
 
     return listings
 
