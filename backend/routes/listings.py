@@ -182,6 +182,7 @@ async def list_listings(
     limit: int = Query(20, ge=1, le=100),
     category_id: Optional[str] = None,
     store_id: Optional[str] = None,
+    user_id: Optional[str] = None,
     location_id: Optional[str] = None,
     search: Optional[str] = None,
     min_price: Optional[float] = Query(None, description="Minimum price"),
@@ -213,6 +214,8 @@ async def list_listings(
             query = query.gte("price", min_price)
         if max_price is not None:
             query = query.lte("price", max_price)
+        if user_id:
+            query = query.eq("user_id", user_id)
         if seller_type:
             if seller_type.lower() == "store":
                 query = query.not_.is_("store_id", "null")
@@ -280,6 +283,130 @@ async def list_listings(
                 if user:
                     seller_phone = user.get("phone_number")
                     
+            listing["seller_phone_number"] = seller_phone
+
+    return listings
+
+@router.get("/my-listings", response_model=List[schemas.ListingOut])
+async def get_my_listings(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100),
+    status: Optional[str] = Query(None, description="Filter by status, e.g., 'active', 'draft', 'pending_approval'"),
+    current_user: dict = Depends(get_current_customer)
+):
+    """
+    Get all listings for the currently authenticated user.
+    Returns listings regardless of status, unless status query param is provided.
+    """
+    user_id = current_user["id"]
+    
+    def query_func(table):
+        query = table.select("*").eq("user_id", user_id)
+        if status:
+            query = query.eq("status", status)
+            
+        return query.range(skip, skip + limit - 1).order("created_at", desc=True)
+
+    result = db.query("listings", query_func)
+    listings = result.data if result.data else []
+    
+    if listings:
+        # Batch fetch images
+        listing_ids = [l["id"] for l in listings]
+        images_map = batch_listing_images(listing_ids)
+
+        # Batch fetch locations
+        location_ids = list({l["location_id"] for l in listings if l.get("location_id")})
+        locations_map = batch_locations(location_ids)
+
+        # Batch fetch stores
+        store_ids = list({l["store_id"] for l in listings if l.get("store_id")})
+        stores_map = batch_stores(store_ids)
+        
+        # Batch fetch active promotions
+        promos_res = db.select_in("listing_promotions", "listing_id", listing_ids)
+        promotions_map = {}
+        if promos_res:
+            from datetime import datetime
+            now_str = datetime.utcnow().isoformat()
+            for promo in promos_res:
+                if promo.get("status") == "active" and promo.get("end_date", "") >= now_str:
+                    pid = promo["listing_id"]
+                    if pid not in promotions_map:
+                        promotions_map[pid] = []
+                    promotions_map[pid].append(promo)
+                    
+        # Batch fetch users for phone numbers
+        users_res = db.select_in("app_users", "id", [user_id])
+        users_map = {u["id"]: u for u in users_res}
+
+        for listing in listings:
+            listing["images"] = images_map.get(listing["id"], [])
+            listing["promotions"] = promotions_map.get(listing["id"], [])
+            
+            if listing.get("location_id"):
+                loc = locations_map.get(listing["location_id"])
+                if loc:
+                    listing["location_details"] = loc
+            
+            seller_phone = None
+            if listing.get("store_id"):
+                store = stores_map.get(listing["store_id"])
+                if store:
+                    listing["seller_type"] = "store"
+                    listing["store_name"] = store.get("name_en") or store.get("name")
+                    listing["store_logo"] = store.get("logo")
+                    seller_phone = store.get("store_number")
+            
+            if not seller_phone and listing.get("user_id"):
+                user = users_map.get(listing["user_id"])
+                if user:
+                    seller_phone = user.get("phone_number")
+                    
+            listing["seller_phone_number"] = seller_phone
+
+    return listings
+
+
+@router.get("/user/{user_id}", response_model=List[schemas.ListingOut])
+async def get_user_listings(
+    user_id: str,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=100)
+):
+    """
+    Get all active listings for a specific individual user (public view).
+    """
+    def query_func(table):
+        from datetime import datetime
+        now_str = datetime.utcnow().isoformat()
+        
+        query = table.select("*").eq("user_id", user_id).eq("status", "active")
+        query = query.or_(f"expires_at.gte.{now_str},expires_at.is.null")
+        return query.range(skip, skip + limit - 1).order("created_at", desc=True)
+
+    result = db.query("listings", query_func)
+    listings = result.data if result.data else []
+    
+    if listings:
+        listing_ids = [l["id"] for l in listings]
+        images_map = batch_listing_images(listing_ids)
+
+        location_ids = list({l["location_id"] for l in listings if l.get("location_id")})
+        locations_map = batch_locations(location_ids)
+
+        users_res = db.select_one("app_users", user_id)
+        seller_phone = users_res.get("phone_number") if users_res else None
+        
+        for listing in listings:
+            listing["images"] = images_map.get(listing["id"], [])
+            
+            if listing.get("location_id"):
+                loc = locations_map.get(listing["location_id"])
+                if loc:
+                    listing["location_details"] = loc
+            
+            listing["seller_type"] = "individual"
             listing["seller_phone_number"] = seller_phone
 
     return listings

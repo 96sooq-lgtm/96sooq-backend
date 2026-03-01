@@ -464,6 +464,15 @@ async def my_transactions(
     result = db.query("payments", query_func)
     
     transactions = result.data if result.data else []
+    
+    for t in transactions:
+        meta = t.get("metadata", {})
+        if isinstance(meta, str):
+            try:
+                t["metadata"] = json.loads(meta)
+            except:
+                t["metadata"] = {}
+                
     total = result.count if result.count is not None else len(transactions)
     pages = math.ceil(total / limit) if total > 0 else 0
     page = (skip // limit) + 1 if limit > 0 else 1
@@ -537,6 +546,13 @@ async def get_transaction_detail_admin(transaction_id: str):
     if not transaction:
         raise HTTPException(status_code=404, detail="Transaction not found")
         
+    meta = transaction.get("metadata", {})
+    if isinstance(meta, str):
+        try:
+            transaction["metadata"] = json.loads(meta)
+        except:
+            transaction["metadata"] = {}
+            
     if transaction.get("user_id"):
         user = db.select_one("app_users", transaction["user_id"])
         if user:
