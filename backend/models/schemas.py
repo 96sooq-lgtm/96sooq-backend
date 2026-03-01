@@ -295,10 +295,9 @@ class ListingOut(BaseModel):
     seller_type: str = "individual"
     store_name: Optional[str] = None
     store_logo: Optional[str] = None
-
-# Favorites
-class FavoriteListingOut(ListingOut):
     images: Optional[List[str]] = []
+
+class FavoriteListingOut(ListingOut):
     favorited_at: Optional[str] = None
 
 class FavoriteListResponse(BaseModel):
