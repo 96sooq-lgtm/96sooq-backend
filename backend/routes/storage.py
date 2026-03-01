@@ -22,40 +22,69 @@ class UploadResponse(BaseModel):
     upload_url: dict
     file_path: str
 
+from typing import List, Optional
+
 @router.post("/upload")
 async def upload_file_proxy(
-    file: UploadFile = File(...),
+    file: Optional[UploadFile] = File(None),
+    files: List[UploadFile] = File(default=[]),
     folder: str = "uploads"
 ):
     """
-    Upload a file directly to S3 via the backend (Proxy Upload).
-    Returns the public URL (CloudFront or S3).
+    Upload a file or multiple files directly to S3 via the backend (Proxy Upload).
+    Returns the public URL (CloudFront or S3) and a list of all URLs for backward compatibility.
     """
     if not s3_client:
         raise HTTPException(status_code=500, detail="Storage service not configured")
+        
+    upload_files = []
+    if file:
+        upload_files.append(file)
+    if files:
+        upload_files.extend(files)
+        
+    if not upload_files:
+        raise HTTPException(status_code=400, detail="No files provided")
 
-    # Generate unique filename
-    unique_filename = f"{uuid.uuid4()}-{file.filename}"
-    object_name = f"{folder}/{unique_filename}"
-    
-    # Upload to S3
+    uploaded_files = []
+    urls = []
+
     try:
-        url = s3_client.upload_file(
-            file.file, 
-            object_name, 
-            content_type=file.content_type
-        )
+        for f in upload_files:
+            # Generate unique filename
+            unique_filename = f"{uuid.uuid4()}-{f.filename}"
+            object_name = f"{folder}/{unique_filename}"
+            
+            # Upload to S3
+            url = s3_client.upload_file(
+                f.file, 
+                object_name, 
+                content_type=f.content_type
+            )
+            
+            if not url:
+                 raise HTTPException(status_code=500, detail=f"Failed to upload file {f.filename} to storage")
+            
+            # Ensure URL always starts with https:// for frontend convenience
+            if not url.startswith(('http://', 'https://')):
+                url = f"https://{url}"
+                
+            urls.append(url)
+            uploaded_files.append({"url": url, "file_path": object_name})
+            
+        # Return backward compatible format + all URLs
+        # If user uploads multiple files, the first file's details are at the root
+        response_data = {
+            "url": uploaded_files[0]["url"], 
+            "file_path": uploaded_files[0]["file_path"],
+            "urls": urls,
+            "files": uploaded_files
+        }
         
-        if not url:
-             raise HTTPException(status_code=500, detail="Failed to upload file to storage")
-        
-        # Ensure URL always starts with https:// for frontend convenience
-        if not url.startswith(('http://', 'https://')):
-            url = f"https://{url}"
-             
-        return {"url": url, "file_path": object_name}
+        return response_data
         
     except Exception as e:
+        logger.error(f"Error during file proxy upload: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 @router.post("/presigned-url/upload", response_model=UploadResponse)
