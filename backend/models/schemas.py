@@ -365,6 +365,7 @@ class AdBannerOut(BaseModel):
     clicks: int = 0
     expires_at: Optional[datetime] = None
     created_at: Optional[str] = None
+    creator_role: Optional[str] = "admin"  # "admin" or "user"
 
 
 # ----------------------------------------------------------------

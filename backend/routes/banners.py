@@ -8,6 +8,15 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 from datetime import datetime, timedelta
 
+def enrich_banners(banners):
+    for b in banners:
+        b["creator_role"] = "user" if b.get("user_id") else "admin"
+    return banners
+
+def enrich_banner(banner):
+    banner["creator_role"] = "user" if banner.get("user_id") else "admin"
+    return banner
+
 # Public/User Router
 router = APIRouter(
     prefix="/api/banners",
@@ -83,7 +92,7 @@ async def boost_listing(
         if not banner:
             raise HTTPException(status_code=500, detail="Failed to create boost")
 
-        return banner
+        return enrich_banner(banner)
 
 
     except HTTPException:
@@ -116,7 +125,7 @@ async def pay_for_banner(
     if not updated:
         raise HTTPException(status_code=500, detail="Payment verification failed")
 
-    return updated
+    return enrich_banner(updated)
 
 @router.get("/my-banners", response_model=List[schemas.AdBannerOut])
 async def list_my_banners(
@@ -126,7 +135,7 @@ async def list_my_banners(
     List logged-in user's banners.
     """
     banners = db.select("ad_banners", filters={"user_id": current_user["id"]})
-    return banners if banners else []
+    return enrich_banners(banners if banners else [])
 
 @router.get("/public", response_model=List[schemas.AdBannerOut])
 async def list_active_banners(
@@ -143,7 +152,7 @@ async def list_active_banners(
         return query.limit(limit).order("created_at", desc=True)
 
     result = db.query("ad_banners", query_func)
-    return result.data if result.data else []
+    return enrich_banners(result.data if result.data else [])
 
 
 @router.get("/home", response_model=List[schemas.AdBannerOut])
@@ -165,7 +174,7 @@ async def get_home_banners(
         )
 
     result = db.query("ad_banners", query_func)
-    return result.data if result.data else []
+    return enrich_banners(result.data if result.data else [])
 
 
 @router.get("/featured", response_model=List[schemas.AdBannerOut])
@@ -184,7 +193,7 @@ async def get_featured_banners():
         )
 
     result = db.query("ad_banners", query_func)
-    return result.data if result.data else []
+    return enrich_banners(result.data if result.data else [])
 
 
 @router.get("/offers", response_model=List[schemas.AdBannerOut])
@@ -202,7 +211,7 @@ async def get_offers():
         )
 
     result = db.query("ad_banners", query_func)
-    return result.data if result.data else []
+    return enrich_banners(result.data if result.data else [])
 
 
 
@@ -236,7 +245,7 @@ async def create_banner_admin(
         if not banner:
             raise HTTPException(status_code=500, detail="Failed to create banner")
 
-        return banner
+        return enrich_banner(banner)
 
     except HTTPException:
         raise
@@ -259,7 +268,7 @@ async def list_all_banners_admin(
         return query.range(skip, skip + limit - 1).order("created_at", desc=True)
         
     result = db.query("ad_banners", query_func)
-    return result.data if result.data else []
+    return enrich_banners(result.data if result.data else [])
 
 @admin_router.patch("/{banner_id}", response_model=schemas.AdBannerOut)
 async def update_banner_admin(
@@ -289,7 +298,7 @@ async def update_banner_admin(
     if not updated:
         raise HTTPException(status_code=500, detail="Failed to update banner")
 
-    return updated
+    return enrich_banner(updated)
 
 
 @admin_router.put("/{banner_id}/approve", response_model=schemas.AdBannerOut)
@@ -321,14 +330,14 @@ async def approve_banner(banner_id: str):
     if not updated:
         raise HTTPException(status_code=500, detail="Failed to approve banner")
         
-    return updated
+    return enrich_banner(updated)
 
 @admin_router.put("/{banner_id}/reject", response_model=schemas.AdBannerOut)
 async def reject_banner(banner_id: str):
     updated = db.update("ad_banners", banner_id, {"status": "rejected"})
     if not updated:
          raise HTTPException(status_code=404, detail="Banner not found")
-    return updated
+    return enrich_banner(updated)
 
 @admin_router.delete("/{banner_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_banner(banner_id: str):
