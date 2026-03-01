@@ -372,21 +372,33 @@ async def get_store_listings(
     store_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
+    request: Request = None
 ):
     """
-    Get all active listings for a store.
-    Used for the Posts tab in store detail page.
+    Get all active listings for a store (public view).
+    If the caller is the store owner, return all listings regardless of status.
     """
     # Verify store exists
     store = db.select_one("stores", store_id)
     if not store:
         raise HTTPException(status_code=404, detail="Store not found")
 
+    is_owner = False
+    if request:
+        try:
+            current_user = await get_current_customer(request)
+            if current_user and current_user.get("id") == store.get("user_id"):
+                is_owner = True
+        except Exception:
+            pass # Not logged in or invalid token, treat as public
+
     def query_func(table):
+        query = table.select("*").eq("store_id", store_id)
+        if not is_owner:
+            query = query.eq("status", "active")
+        
         return (
-            table.select("*")
-            .eq("store_id", store_id)
-            .eq("status", "active")
+            query
             .range(skip, skip + limit - 1)
             .order("created_at", desc=True)
         )
@@ -397,6 +409,7 @@ async def get_store_listings(
     # Batch fetch images — 1 query instead of N
     if listings:
         listing_ids = [l["id"] for l in listings]
+        from utils.helpers import batch_listing_images
         images_map = batch_listing_images(listing_ids)
         for listing in listings:
             listing["images"] = images_map.get(listing["id"], [])
