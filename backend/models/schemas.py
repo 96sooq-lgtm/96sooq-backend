@@ -293,9 +293,11 @@ class ListingOut(BaseModel):
     location_details: Optional[dict] = None # Populated with location name/type
     created_at: Optional[str] = None
     seller_type: str = "individual"
+    seller_phone_number: Optional[str] = None
     store_name: Optional[str] = None
     store_logo: Optional[str] = None
     images: Optional[List[str]] = []
+    promotions: Optional[List[dict]] = []
 
 class FavoriteListingOut(ListingOut):
     favorited_at: Optional[str] = None

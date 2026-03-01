@@ -9,6 +9,7 @@ from utils.logger import setup_logging, get_logger
 from routes import health
 from routes.admin import router as admin_router
 from routes.auth import router as auth_router
+from routes.users import admin_router as admin_users_router
 from routes.categories import admin_router as category_admin_router
 from routes.categories import user_router as category_user_router
 from routes.stores import router as stores_router
@@ -79,6 +80,7 @@ app.add_middleware(
 # Include routers
 app.include_router(health.router)
 app.include_router(admin_router)
+app.include_router(admin_users_router)
 app.include_router(auth_router)
 app.include_router(category_admin_router)
 app.include_router(category_user_router)

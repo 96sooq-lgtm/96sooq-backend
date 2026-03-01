@@ -411,6 +411,12 @@ async def get_store_listings(
     result = db.query("listings", query_func)
     listings = result.data if result.data else []
 
+    seller_phone = store.get("store_number")
+    if not seller_phone and store.get("user_id"):
+        user = db.select_one("app_users", store.get("user_id"))
+        if user:
+            seller_phone = user.get("phone_number")
+
     # Batch fetch images — 1 query instead of N
     if listings:
         listing_ids = [l["id"] for l in listings]
@@ -422,6 +428,7 @@ async def get_store_listings(
             listing["seller_type"] = "store"
             listing["store_name"] = store.get("name_en") or store.get("name")
             listing["store_logo"] = store.get("logo")
+            listing["seller_phone_number"] = seller_phone
 
     return listings
 

@@ -189,7 +189,13 @@ async def list_listings(
     List active listings with filters.
     """
     def query_func(table):
+        from datetime import datetime
+        now_str = datetime.utcnow().isoformat()
+        
+        # Only fetch active listings that are not expired
+        # (expires_at is null for legacy listings that haven't been migrated yet)
         query = table.select("*").eq("status", "active")
+        query = query.or_(f"expires_at.gte.{now_str},expires_at.is.null")
         
         if category_id:
             query = query.eq("category_id", category_id)
@@ -218,21 +224,48 @@ async def list_listings(
         # Batch fetch stores
         store_ids = list({l["store_id"] for l in listings if l.get("store_id")})
         stores_map = batch_stores(store_ids)
+        
+        # Batch fetch active promotions
+        promos_res = db.select_in("listing_promotions", "listing_id", listing_ids)
+        promotions_map = {}
+        if promos_res:
+            now_str = datetime.utcnow().isoformat()
+            for promo in promos_res:
+                if promo.get("status") == "active" and promo.get("end_date", "") >= now_str:
+                    pid = promo["listing_id"]
+                    if pid not in promotions_map:
+                        promotions_map[pid] = []
+                    promotions_map[pid].append(promo)
+                    
+        # Batch fetch users for phone numbers
+        user_ids = list({l["user_id"] for l in listings if l.get("user_id")})
+        users_res = db.select_in("app_users", "id", user_ids) if user_ids else []
+        users_map = {u["id"]: u for u in users_res}
 
         for listing in listings:
             listing["images"] = images_map.get(listing["id"], [])
+            listing["promotions"] = promotions_map.get(listing["id"], [])
             
             if listing.get("location_id"):
                 loc = locations_map.get(listing["location_id"])
                 if loc:
                     listing["location_details"] = loc
-                    
+            
+            seller_phone = None
             if listing.get("store_id"):
                 store = stores_map.get(listing["store_id"])
                 if store:
                     listing["seller_type"] = "store"
                     listing["store_name"] = store.get("name_en") or store.get("name")
                     listing["store_logo"] = store.get("logo")
+                    seller_phone = store.get("store_number")
+            
+            if not seller_phone and listing.get("user_id"):
+                user = users_map.get(listing["user_id"])
+                if user:
+                    seller_phone = user.get("phone_number")
+                    
+            listing["seller_phone_number"] = seller_phone
 
     return listings
 
@@ -252,12 +285,27 @@ async def get_listing(listing_id: str):
         if loc:
              listing["location_details"] = loc
              
+    seller_phone = None
     if listing.get("store_id"):
         store = db.select_one("stores", listing["store_id"])
         if store:
             listing["seller_type"] = "store"
             listing["store_name"] = store.get("name_en") or store.get("name")
             listing["store_logo"] = store.get("logo")
+            seller_phone = store.get("store_number")
+            
+    if not seller_phone and listing.get("user_id"):
+        user = db.select_one("app_users", listing["user_id"])
+        if user:
+            seller_phone = user.get("phone_number")
+            
+    listing["seller_phone_number"] = seller_phone
+    
+    # Fetch active promotions
+    now_str = datetime.utcnow().isoformat()
+    promos = db.select("listing_promotions", filters={"listing_id": listing_id, "status": "active"})
+    active_promos = [p for p in promos if p.get("end_date", "") >= now_str] if promos else []
+    listing["promotions"] = active_promos
     
     return listing
 
@@ -342,15 +390,29 @@ async def list_all_listings_admin(
         store_ids = list({l["store_id"] for l in listings if l.get("store_id")})
         stores_map = batch_stores(store_ids)
         
+        # Batch fetch users for phone numbers
+        user_ids = list({l["user_id"] for l in listings if l.get("user_id")})
+        users_res = db.select_in("app_users", "id", user_ids) if user_ids else []
+        users_map = {u["id"]: u for u in users_res}
+        
         for listing in listings:
             listing["images"] = images_map.get(listing["id"], [])
             
+            seller_phone = None
             if listing.get("store_id"):
                 store = stores_map.get(listing["store_id"])
                 if store:
                     listing["seller_type"] = "store"
                     listing["store_name"] = store.get("name_en") or store.get("name")
                     listing["store_logo"] = store.get("logo")
+                    seller_phone = store.get("store_number")
+            
+            if not seller_phone and listing.get("user_id"):
+                user = users_map.get(listing["user_id"])
+                if user:
+                    seller_phone = user.get("phone_number")
+                    
+            listing["seller_phone_number"] = seller_phone
     
     return listings
 
