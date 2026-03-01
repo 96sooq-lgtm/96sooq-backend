@@ -385,12 +385,17 @@ async def get_store_listings(
 
     is_owner = False
     if request:
-        try:
-            current_user = await get_current_customer(request)
-            if current_user and current_user.get("id") == store.get("user_id"):
-                is_owner = True
-        except Exception:
-            pass # Not logged in or invalid token, treat as public
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+            try:
+                # Use decode_customer_token instead of dependency function
+                from utils.auth import decode_customer_token
+                current_user = decode_customer_token(token)
+                if current_user and current_user.get("id") == store.get("user_id"):
+                    is_owner = True
+            except Exception:
+                pass # Not logged in or invalid token, treat as public
 
     def query_func(table):
         query = table.select("*").eq("store_id", store_id)
