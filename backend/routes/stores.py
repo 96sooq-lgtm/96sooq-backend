@@ -116,7 +116,8 @@ async def list_stores(
     my_stores: bool = Query(False, description="If true, return only the authenticated user's stores (requires Bearer token)"),
     status: Optional[str] = Query(None, description="Filter by status — only applies when fetching own stores"),
     location_id: Optional[str] = Query(None, description="Filter by governorate or wilayat UUID. If null, returns all stores."),
-    user_id: Optional[str] = Query(None, description="If 'current', return the authenticated user's stores (all statuses).")
+    user_id: Optional[str] = Query(None, description="If 'current', return the authenticated user's stores (all statuses)."),
+    min_rating: Optional[float] = Query(None, description="Minimum average rating")
 ):
     """
     List stores.
@@ -163,7 +164,10 @@ async def list_stores(
         if wilayat_filter:
             query = query.eq("wilayat", wilayat_filter)
 
-        return query.range(skip, skip + limit - 1).order("created_at", desc=True)
+        if min_rating is None:
+            query = query.range(skip, skip + limit - 1)
+            
+        return query.order("created_at", desc=True)
 
     result = db.query("stores", query_func)
     stores = result.data if result.data else []
@@ -182,6 +186,10 @@ async def list_stores(
             ratings = ratings_map.get(store["id"], [])
             store["average_rating"] = round(sum(ratings) / len(ratings), 1) if ratings else 0.0
             store["total_reviews"] = len(ratings)
+            
+    if min_rating is not None:
+        stores = [s for s in stores if s.get("average_rating", 0.0) >= min_rating]
+        stores = stores[skip : skip + limit]
 
     return stores
 

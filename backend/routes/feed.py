@@ -81,6 +81,9 @@ def _fetch_organic_listings(
     location_ids: Optional[List[str]] = None,
     category_id: Optional[str] = None,
     condition: Optional[str] = None,
+    min_price: Optional[float] = None,
+    max_price: Optional[float] = None,
+    seller_type: Optional[str] = None,
     exclude_ids: Optional[List[str]] = None,
     skip: int = 0,
     limit: int = 20,
@@ -102,6 +105,15 @@ def _fetch_organic_listings(
             query = query.eq("category_id", category_id)
         if condition:
             query = query.eq("condition", condition)
+        if min_price is not None:
+            query = query.gte("price", min_price)
+        if max_price is not None:
+            query = query.lte("price", max_price)
+        if seller_type:
+            if seller_type.lower() == "store":
+                query = query.not_.is_("store_id", "null")
+            elif seller_type.lower() == "individual":
+                query = query.is_("store_id", "null")
         return query.limit(0)
 
     count_result = db.query("listings", count_func)
@@ -120,6 +132,15 @@ def _fetch_organic_listings(
             query = query.eq("category_id", category_id)
         if condition:
             query = query.eq("condition", condition)
+        if min_price is not None:
+            query = query.gte("price", min_price)
+        if max_price is not None:
+            query = query.lte("price", max_price)
+        if seller_type:
+            if seller_type.lower() == "store":
+                query = query.not_.is_("store_id", "null")
+            elif seller_type.lower() == "individual":
+                query = query.is_("store_id", "null")
         return query.range(skip, skip + fetch_limit - 1).order("created_at", desc=True)
 
     result = db.query("listings", query_func)
@@ -143,6 +164,9 @@ async def get_feed(
     limit: int = Query(20, ge=1, le=50, description="Items per page"),
     category_id: Optional[str] = Query(None, description="Filter by category"),
     condition: Optional[str] = Query(None, description="Filter: 'new' or 'used'"),
+    min_price: Optional[float] = Query(None, description="Minimum price"),
+    max_price: Optional[float] = Query(None, description="Maximum price"),
+    seller_type: Optional[str] = Query(None, description="Filter by seller type: 'individual' or 'store'")
 ):
     """
     Main location-aware listing feed with promoted listings.
@@ -214,6 +238,9 @@ async def get_feed(
             place_names=[wilayat_name],
             category_id=category_id,
             condition=condition,
+            min_price=min_price,
+            max_price=max_price,
+            seller_type=seller_type,
             exclude_ids=promoted_ids,
             skip=skip_offset,
             limit=organic_limit,
@@ -255,6 +282,9 @@ async def get_feed(
         organic_listings, total_organic = _fetch_organic_listings(
             category_id=category_id,
             condition=condition,
+            min_price=min_price,
+            max_price=max_price,
+            seller_type=seller_type,
             exclude_ids=promoted_ids,
             skip=skip_offset,
             limit=organic_limit,
@@ -392,6 +422,7 @@ async def get_nearby_stores(
     lng: float = Query(..., description="User's longitude"),
     page: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=50),
+    min_rating: Optional[float] = Query(None, description="Minimum average rating")
 ):
     """
     Location-aware store listing.
@@ -419,6 +450,10 @@ async def get_nearby_stores(
                 else:
                     query = query.eq("governorate_id", gov_filter)
             return query.limit(0)
+        
+        if min_rating is not None:
+            return 0  # We will count after fetching and filtering
+            
         result = db.query("stores", count_func)
         return result.count if result.count is not None else 0
 
@@ -432,7 +467,11 @@ async def get_nearby_stores(
                     query = query.in_("governorate_id", gov_filter)
                 else:
                     query = query.eq("governorate_id", gov_filter)
-            return query.range(skip, skip + limit - 1).order("created_at", desc=True)
+                    
+            if min_rating is None:
+                query = query.range(skip, skip + limit - 1)
+                
+            return query.order("created_at", desc=True)
         result = db.query("stores", query_func)
         return result.data if result.data else []
 
@@ -472,6 +511,11 @@ async def get_nearby_stores(
             ratings = ratings_map.get(store["id"], [])
             store["average_rating"] = round(sum(ratings) / len(ratings), 1) if ratings else 0.0
             store["total_reviews"] = len(ratings)
+
+    if min_rating is not None:
+        stores = [s for s in stores if s.get("average_rating", 0.0) >= min_rating]
+        total = len(stores)
+        stores = stores[skip : skip + limit]
 
     pages = math.ceil(total / limit) if total > 0 else 0
 

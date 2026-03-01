@@ -183,7 +183,11 @@ async def list_listings(
     category_id: Optional[str] = None,
     store_id: Optional[str] = None,
     location_id: Optional[str] = None,
-    search: Optional[str] = None
+    search: Optional[str] = None,
+    min_price: Optional[float] = Query(None, description="Minimum price"),
+    max_price: Optional[float] = Query(None, description="Maximum price"),
+    seller_type: Optional[str] = Query(None, description="Filter by seller type: 'individual' or 'store'"),
+    condition: Optional[str] = Query(None, description="Filter by condition: 'new' or 'used'")
 ):
     """
     List active listings with filters.
@@ -203,6 +207,17 @@ async def list_listings(
             query = query.eq("store_id", store_id)
         if location_id:
             query = query.eq("location_id", location_id)
+        if condition:
+            query = query.eq("condition", condition)
+        if min_price is not None:
+            query = query.gte("price", min_price)
+        if max_price is not None:
+            query = query.lte("price", max_price)
+        if seller_type:
+            if seller_type.lower() == "store":
+                query = query.not_.is_("store_id", "null")
+            elif seller_type.lower() == "individual":
+                query = query.is_("store_id", "null")
         if search:
             # Supabase/PostgREST text search (simple ilike for title)
             query = query.ilike("title", f"%{search}%")
