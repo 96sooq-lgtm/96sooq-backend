@@ -299,6 +299,9 @@ class ListingOut(BaseModel):
     location_name_ar: Optional[str] = None
     place_name_en: Optional[str] = None
     place_name_ar: Optional[str] = None
+    wilayat_id: Optional[str] = None
+    wilayat_name_en: Optional[str] = None
+    wilayat_name_ar: Optional[str] = None
     created_at: Optional[str] = None
     seller_type: str = "individual"
     user_name: Optional[str] = None

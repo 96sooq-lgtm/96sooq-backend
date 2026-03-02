@@ -182,6 +182,9 @@ def create_listing(
         if city:
             listing["place_name_en"] = city.get("name_en")
             listing["place_name_ar"] = city.get("name_ar")
+            listing["wilayat_id"] = city.get("id")
+            listing["wilayat_name_en"] = city.get("name_en")
+            listing["wilayat_name_ar"] = city.get("name_ar")
     
     # 7. Handle Images — batch insert in one query
     if payload.images:
@@ -564,9 +567,12 @@ def get_listing(listing_id: str, current_user: Optional[dict] = Depends(get_opti
                      return table.select("*").eq("type", "city").eq("name_en", listing["place"]).eq("parent_id", listing["location_id"])
                  wilayats_res = db.query("locations", wilayat_query)
                  if wilayats_res.data:
-                     wilayat = wilayats_res.data[0]
-                     listing["place_name_en"] = wilayat.get("name_en")
-                     listing["place_name_ar"] = wilayat.get("name_ar")
+                      wilayat = wilayats_res.data[0]
+                      listing["place_name_en"] = wilayat.get("name_en")
+                      listing["place_name_ar"] = wilayat.get("name_ar")
+                      listing["wilayat_id"] = wilayat.get("id")
+                      listing["wilayat_name_en"] = wilayat.get("name_en")
+                      listing["wilayat_name_ar"] = wilayat.get("name_ar")
              
     seller_phone = None
     if listing.get("store_id"):

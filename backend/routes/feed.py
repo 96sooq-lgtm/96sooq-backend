@@ -365,6 +365,9 @@ def get_feed(
                 if wilayat:
                     listing["place_name_en"] = wilayat.get("name_en")
                     listing["place_name_ar"] = wilayat.get("name_ar")
+                    listing["wilayat_id"] = wilayat.get("id")
+                    listing["wilayat_name_en"] = wilayat.get("name_en")
+                    listing["wilayat_name_ar"] = wilayat.get("name_ar")
                     
             seller_phone = None
             if listing.get("store_id"):
@@ -890,6 +893,9 @@ def get_category_feed(
                 if wilayat:
                     l["place_name_en"] = wilayat.get("name_en")
                     l["place_name_ar"] = wilayat.get("name_ar")
+                    l["wilayat_id"] = wilayat.get("id")
+                    l["wilayat_name_en"] = wilayat.get("name_en")
+                    l["wilayat_name_ar"] = wilayat.get("name_ar")
                     
             seller_phone = None
             if l.get("store_id"):
