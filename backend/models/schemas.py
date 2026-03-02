@@ -283,7 +283,7 @@ class ListingOut(BaseModel):
     title: str
     description: Optional[str] = None
     condition: Optional[str] = None
-    place: Optional[str] = None
+    place: Optional[str] = None # Legacy place name string
     price: float
     currency: str
     status: str
@@ -295,6 +295,10 @@ class ListingOut(BaseModel):
     parent_category_name_ar: Optional[str] = None
     location_id: Optional[str] = None
     location_details: Optional[dict] = None # Populated with location name/type
+    location_name_en: Optional[str] = None
+    location_name_ar: Optional[str] = None
+    place_name_en: Optional[str] = None
+    place_name_ar: Optional[str] = None
     created_at: Optional[str] = None
     seller_type: str = "individual"
     user_name: Optional[str] = None

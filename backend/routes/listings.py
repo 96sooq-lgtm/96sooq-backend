@@ -164,10 +164,24 @@ def create_listing(
     if is_store_user:
         listing["store_name"] = user_stores[0].get("name_en") or user_stores[0].get("name")
         listing["store_logo"] = user_stores[0].get("logo")
+        listing["store_id"] = store_id
     
     listing["user_name"] = current_user.get("name")
     listing["user_profile_picture"] = current_user.get("profile_picture")
     listing["is_favorite"] = False
+
+    # Inject location names for response
+    if location_id:
+        loc = db.select_one("locations", location_id)
+        if loc:
+            listing["location_name_en"] = loc.get("name_en")
+            listing["location_name_ar"] = loc.get("name_ar")
+    
+    if payload.place_id:
+        city = db.select_one("locations", payload.place_id)
+        if city:
+            listing["place_name_en"] = city.get("name_en")
+            listing["place_name_ar"] = city.get("name_ar")
     
     # 7. Handle Images — batch insert in one query
     if payload.images:
@@ -271,6 +285,18 @@ def list_listings(
             favs = db.select("favorites", filters={"user_id": current_user["id"]})
             fav_set = {f["listing_id"] for f in favs}
 
+        # Batch fetch Wilayat details (cities)
+        # Filters: type='city', names in listing['place'], parent_ids in listing['location_id']
+        places = list({l["place"] for l in listings if l.get("place")})
+        wilayats_map = {}
+        if places and location_ids:
+            def wilayat_query(table):
+                return table.select("*").eq("type", "city").in_("name_en", places).in_("parent_id", location_ids)
+            wilayats_res = db.query("locations", wilayat_query)
+            if wilayats_res.data:
+                for w in wilayats_res.data:
+                    wilayats_map[(w["name_en"], w["parent_id"])] = w
+
         for listing in listings:
             listing["images"] = images_map.get(listing["id"], [])
             listing["promotions"] = promotions_map.get(listing["id"], [])
@@ -280,7 +306,24 @@ def list_listings(
                 loc = locations_map.get(listing["location_id"])
                 if loc:
                     listing["location_details"] = loc
+                    listing["location_name_en"] = loc.get("name_en")
+                    listing["location_name_ar"] = loc.get("name_ar")
             
+            # Fetch place name from locations if place_id exists (it might be in attributes or we need to check the DB)
+            # Actually, per ListingCreate, it's called 'place_id' in payload but saved as 'place' (name) or not saved?
+            # Wait, 07 migration added 'place' column as TEXT.
+            # Let's check if we can find the city by name or if we should have stored place_id.
+            # For now, let's try to find the city in locations_map if we had place_id, 
+            # but listings table only has location_id (state).
+            # The 'place' column in listings stores the name of the city.
+            
+            # Inject Wilayat details
+            if listing.get("place") and listing.get("location_id"):
+                wilayat = wilayats_map.get((listing["place"], listing["location_id"]))
+                if wilayat:
+                    listing["place_name_en"] = wilayat.get("name_en")
+                    listing["place_name_ar"] = wilayat.get("name_ar")
+
             seller_phone = None
             if listing.get("store_id"):
                 store = stores_map.get(listing["store_id"])
@@ -288,7 +331,15 @@ def list_listings(
                     listing["seller_type"] = "store"
                     listing["store_name"] = store.get("name_en") or store.get("name")
                     listing["store_logo"] = store.get("logo")
+                    listing["store_id"] = store["id"] # Ensure it's there
                     seller_phone = store.get("store_number")
+                    
+                    # Store also has location_id and place. Let's use them if listing doesn't have them.
+                    if not listing.get("location_name_en") and store.get("location_id"):
+                        s_loc = locations_map.get(store["location_id"])
+                        if s_loc:
+                            listing["location_name_en"] = s_loc.get("name_en")
+                            listing["location_name_ar"] = s_loc.get("name_ar")
             
             if listing.get("user_id"):
                 user = users_map.get(listing["user_id"])
@@ -360,6 +411,17 @@ def get_my_listings(
         favs = db.select("favorites", filters={"user_id": current_user["id"]})
         fav_set = {f["listing_id"] for f in favs}
 
+        # Batch fetch Wilayat details (cities)
+        places = list({l["place"] for l in listings if l.get("place")})
+        wilayats_map = {}
+        if places and location_ids:
+            def wilayat_query(table):
+                return table.select("*").eq("type", "city").in_("name_en", places).in_("parent_id", location_ids)
+            wilayats_res = db.query("locations", wilayat_query)
+            if wilayats_res.data:
+                for w in wilayats_res.data:
+                    wilayats_map[(w["name_en"], w["parent_id"])] = w
+
         for listing in listings:
             listing["images"] = images_map.get(listing["id"], [])
             listing["promotions"] = promotions_map.get(listing["id"], [])
@@ -369,6 +431,15 @@ def get_my_listings(
                 loc = locations_map.get(listing["location_id"])
                 if loc:
                     listing["location_details"] = loc
+                    listing["location_name_en"] = loc.get("name_en")
+                    listing["location_name_ar"] = loc.get("name_ar")
+            
+            # Inject Wilayat details
+            if listing.get("place") and listing.get("location_id"):
+                wilayat = wilayats_map.get((listing["place"], listing["location_id"]))
+                if wilayat:
+                    listing["place_name_en"] = wilayat.get("name_en")
+                    listing["place_name_ar"] = wilayat.get("name_ar")
             
             seller_phone = None
             if listing.get("store_id"):
@@ -377,6 +448,7 @@ def get_my_listings(
                     listing["seller_type"] = "store"
                     listing["store_name"] = store.get("name_en") or store.get("name")
                     listing["store_logo"] = store.get("logo")
+                    listing["store_id"] = store["id"]
                     seller_phone = store.get("store_number")
             
             if listing.get("user_id"):
@@ -428,6 +500,17 @@ def get_user_listings(
         if current_user:
             favs = db.select("favorites", filters={"user_id": current_user["id"]})
             fav_set = {f["listing_id"] for f in favs}
+
+        # Batch fetch Wilayat details (cities)
+        places = list({l["place"] for l in listings if l.get("place")})
+        wilayats_map = {}
+        if places and location_ids:
+            def wilayat_query(table):
+                return table.select("*").eq("type", "city").in_("name_en", places).in_("parent_id", location_ids)
+            wilayats_res = db.query("locations", wilayat_query)
+            if wilayats_res.data:
+                for w in wilayats_res.data:
+                    wilayats_map[(w["name_en"], w["parent_id"])] = w
         
         for listing in listings:
             listing["images"] = images_map.get(listing["id"], [])
@@ -437,6 +520,15 @@ def get_user_listings(
                 loc = locations_map.get(listing["location_id"])
                 if loc:
                     listing["location_details"] = loc
+                    listing["location_name_en"] = loc.get("name_en")
+                    listing["location_name_ar"] = loc.get("name_ar")
+            
+            # Inject Wilayat details
+            if listing.get("place") and listing.get("location_id"):
+                wilayat = wilayats_map.get((listing["place"], listing["location_id"]))
+                if wilayat:
+                    listing["place_name_en"] = wilayat.get("name_en")
+                    listing["place_name_ar"] = wilayat.get("name_ar")
             
             listing["seller_type"] = "individual"
             if users_res:
@@ -463,6 +555,18 @@ def get_listing(listing_id: str, current_user: Optional[dict] = Depends(get_opti
         loc = db.select_one("locations", listing["location_id"])
         if loc:
              listing["location_details"] = loc
+             listing["location_name_en"] = loc.get("name_en")
+             listing["location_name_ar"] = loc.get("name_ar")
+             
+             # Fetch Wilayat details if place exists
+             if listing.get("place"):
+                 def wilayat_query(table):
+                     return table.select("*").eq("type", "city").eq("name_en", listing["place"]).eq("parent_id", listing["location_id"])
+                 wilayats_res = db.query("locations", wilayat_query)
+                 if wilayats_res.data:
+                     wilayat = wilayats_res.data[0]
+                     listing["place_name_en"] = wilayat.get("name_en")
+                     listing["place_name_ar"] = wilayat.get("name_ar")
              
     seller_phone = None
     if listing.get("store_id"):
@@ -471,6 +575,7 @@ def get_listing(listing_id: str, current_user: Optional[dict] = Depends(get_opti
             listing["seller_type"] = "store"
             listing["store_name"] = store.get("name_en") or store.get("name")
             listing["store_logo"] = store.get("logo")
+            listing["store_id"] = store["id"]
             seller_phone = store.get("store_number")
             
     if listing.get("user_id"):
@@ -600,6 +705,7 @@ def list_all_listings_admin(
                     listing["seller_type"] = "store"
                     listing["store_name"] = store.get("name_en") or store.get("name")
                     listing["store_logo"] = store.get("logo")
+                    listing["store_id"] = store["id"]
                     seller_phone = store.get("store_number")
             
             if listing.get("user_id"):

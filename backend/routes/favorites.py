@@ -144,6 +144,8 @@ def list_favorites(
                     loc = locations_map.get(listing["location_id"])
                     if loc:
                         listing["location_details"] = loc
+                        listing["location_name_en"] = loc.get("name_en")
+                        listing["location_name_ar"] = loc.get("name_ar")
                         
                 seller_phone = None
                 if listing.get("store_id"):
@@ -152,6 +154,7 @@ def list_favorites(
                         listing["seller_type"] = "store"
                         listing["store_name"] = store.get("name_en") or store.get("name")
                         listing["store_logo"] = store.get("logo")
+                        listing["store_id"] = store["id"]
                         seller_phone = store.get("store_number")
                 else:
                     listing["seller_type"] = "individual"
