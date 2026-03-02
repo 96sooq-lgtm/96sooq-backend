@@ -425,17 +425,48 @@ def get_store_listings(
         if user:
             seller_phone = user.get("phone_number")
 
-    # Batch fetch images — 1 query instead of N
+    # Batch fetch images and locations — 1 query instead of N
     if listings:
         listing_ids = [l["id"] for l in listings]
-        from utils.helpers import batch_listing_images
+        from utils.helpers import batch_listing_images, batch_locations
         images_map = batch_listing_images(listing_ids)
+        
+        location_ids = list({l["location_id"] for l in listings if l.get("location_id")})
+        locations_map = batch_locations(location_ids)
+        
+        # Batch fetch Wilayat details (cities)
+        places = list({l["place"] for l in listings if l.get("place")})
+        wilayats_map = {}
+        if places and location_ids:
+            def wilayat_query(table):
+                return table.select("*").eq("type", "city").in_("name_en", places).in_("parent_id", location_ids)
+            wilayats_res = db.query("locations", wilayat_query)
+            if wilayats_res.data:
+                for w in wilayats_res.data:
+                    wilayats_map[(w["name_en"], w["parent_id"])] = w
+
         for listing in listings:
             listing["images"] = images_map.get(listing["id"], [])
+            
+            if listing.get("location_id"):
+                loc = locations_map.get(listing["location_id"])
+                if loc:
+                    listing["location_details"] = loc
+                    listing["location_name_en"] = loc.get("name_en")
+                    listing["location_name_ar"] = loc.get("name_ar")
+            
+            # Inject Wilayat details
+            if listing.get("place") and listing.get("location_id"):
+                wilayat = wilayats_map.get((listing["place"], listing["location_id"]))
+                if wilayat:
+                    listing["place_name_en"] = wilayat.get("name_en")
+                    listing["place_name_ar"] = wilayat.get("name_ar")
+            
             # Inject store info since this is a store listing
             listing["seller_type"] = "store"
             listing["store_name"] = store.get("name_en") or store.get("name")
             listing["store_logo"] = store.get("logo")
+            listing["store_id"] = store["id"]
             listing["seller_phone_number"] = seller_phone
 
     return listings

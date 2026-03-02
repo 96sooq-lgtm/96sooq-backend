@@ -337,6 +337,17 @@ def get_feed(
             favs = db.select("favorites", filters={"user_id": current_user["id"]})
             fav_set = {f["listing_id"] for f in favs}
 
+        # Batch fetch Wilayat details (cities)
+        places = list({l["place"] for l in all_listings if l.get("place")})
+        wilayats_map = {}
+        if places and location_ids:
+            def wilayat_query(table):
+                return table.select("*").eq("type", "city").in_("name_en", places).in_("parent_id", location_ids)
+            wilayats_res = db.query("locations", wilayat_query)
+            if wilayats_res.data:
+                for w in wilayats_res.data:
+                    wilayats_map[(w["name_en"], w["parent_id"])] = w
+
         for listing in all_listings:
             listing["images"] = images_map.get(listing["id"], [])
             listing["is_favorite"] = listing["id"] in fav_set
@@ -345,6 +356,15 @@ def get_feed(
                 loc = locations_map.get(listing["location_id"])
                 if loc:
                     listing["location_details"] = loc
+                    listing["location_name_en"] = loc.get("name_en")
+                    listing["location_name_ar"] = loc.get("name_ar")
+            
+            # Inject Wilayat details
+            if listing.get("place") and listing.get("location_id"):
+                wilayat = wilayats_map.get((listing["place"], listing["location_id"]))
+                if wilayat:
+                    listing["place_name_en"] = wilayat.get("name_en")
+                    listing["place_name_ar"] = wilayat.get("name_ar")
                     
             seller_phone = None
             if listing.get("store_id"):
@@ -353,6 +373,7 @@ def get_feed(
                     listing["seller_type"] = "store"
                     listing["store_name"] = store.get("name_en") or store.get("name")
                     listing["store_logo"] = store.get("logo")
+                    listing["store_id"] = store["id"]
                     seller_phone = store.get("store_number")
             else:
                 listing["seller_type"] = "individual"
@@ -842,6 +863,17 @@ def get_category_feed(
             favs = db.select("favorites", filters={"user_id": current_user["id"]})
             fav_set = {f["listing_id"] for f in favs}
 
+        # Batch fetch Wilayat details (cities)
+        places = list({l["place"] for l in all_listings if l.get("place")})
+        wilayats_map = {}
+        if places and loc_ids:
+            def wilayat_query(table):
+                return table.select("*").eq("type", "city").in_("name_en", places).in_("parent_id", loc_ids)
+            wilayats_res = db.query("locations", wilayat_query)
+            if wilayats_res.data:
+                for w in wilayats_res.data:
+                    wilayats_map[(w["name_en"], w["parent_id"])] = w
+
         for l in all_listings:
             l["images"] = images_map.get(l["id"], [])
             l["is_favorite"] = l["id"] in fav_set
@@ -849,6 +881,15 @@ def get_category_feed(
                 loc = locations_map.get(l["location_id"])
                 if loc:
                     l["location_details"] = loc
+                    l["location_name_en"] = loc.get("name_en")
+                    l["location_name_ar"] = loc.get("name_ar")
+            
+            # Inject Wilayat details
+            if l.get("place") and l.get("location_id"):
+                wilayat = wilayats_map.get((l["place"], l["location_id"]))
+                if wilayat:
+                    l["place_name_en"] = wilayat.get("name_en")
+                    l["place_name_ar"] = wilayat.get("name_ar")
                     
             seller_phone = None
             if l.get("store_id"):
@@ -857,6 +898,7 @@ def get_category_feed(
                     l["seller_type"] = "store"
                     l["store_name"] = store.get("name_en") or store.get("name")
                     l["store_logo"] = store.get("logo")
+                    l["store_id"] = store["id"]
                     seller_phone = store.get("store_number")
             else:
                 l["seller_type"] = "individual"
