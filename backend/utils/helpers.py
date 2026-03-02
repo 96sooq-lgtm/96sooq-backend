@@ -83,6 +83,7 @@ def batch_stores(store_ids: List[str]) -> Dict[str, Dict]:
     stores = db.select_in("stores", "id", list(set(store_ids)))
     return {store["id"]: store for store in stores}
 
+
 def batch_categories(category_ids: List[str]) -> Dict[str, Dict]:
     """
     Fetch categories for multiple IDs in a single DB query.
@@ -93,4 +94,29 @@ def batch_categories(category_ids: List[str]) -> Dict[str, Dict]:
 
     categories = db.select_in("categories", "id", list(set(category_ids)))
     return {cat["id"]: cat for cat in categories}
+
+
+
+def batch_listings(listing_ids: List[str], columns: str = "*") -> Dict[str, Dict]:
+    """
+    Fetch listings for multiple IDs in a single DB query.
+    Returns a dict: { listing_id: {listing data} }
+    """
+    if not listing_ids:
+        return {}
+
+    listings = db.select_in("listings", "id", list(set(listing_ids)), columns=columns)
+    return {l["id"]: l for l in listings}
+
+
+def batch_conversations(conversation_ids: List[str], columns: str = "*") -> Dict[str, Dict]:
+    """
+    Fetch conversations for multiple IDs in a single DB query.
+    Returns a dict: { conversation_id: {conversation data} }
+    """
+    if not conversation_ids:
+        return {}
+
+    convs = db.select_in("conversations", "id", list(set(conversation_ids)), columns=columns)
+    return {c["id"]: c for c in convs}
 

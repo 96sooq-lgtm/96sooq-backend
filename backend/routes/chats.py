@@ -21,6 +21,7 @@ from models.schemas import (
     ConversationInitiate, ConversationOut, ConversationListResponse,
     MessageCreate, MessageOut,
 )
+from utils.helpers import batch_listings, batch_conversations
 from typing import List, Optional
 
 logger = get_logger(__name__)
@@ -141,7 +142,7 @@ def get_inbox(
     def query_func(table):
         return (
             table
-            .select("*, listing:listings(id, title, price, currency, status)")
+            .select("*")
             .or_(f"buyer_id.eq.{user_id},seller_id.eq.{user_id}")
             .eq("status", "active")
             .order("last_message_at", desc=True)
@@ -151,11 +152,16 @@ def get_inbox(
     result = db.query("conversations", query_func)
     conversations = result.data if result.data else []
 
-    # Annotate each conversation with role + personalised unread count
-    for conv in conversations:
-        is_buyer = conv["buyer_id"] == user_id
-        conv["my_role"] = "buyer" if is_buyer else "seller"
-        conv["unread_count"] = conv["buyer_unread"] if is_buyer else conv["seller_unread"]
+    # Batch fetch listing details (manual join to avoid PGRST200 if FK is missing)
+    if conversations:
+        listing_ids = [c["listing_id"] for c in conversations]
+        listings_map = batch_listings(listing_ids, columns="id, title, price, currency, status")
+
+        for conv in conversations:
+            conv["listing"] = listings_map.get(conv["listing_id"])
+            is_buyer = conv["buyer_id"] == user_id
+            conv["my_role"] = "buyer" if is_buyer else "seller"
+            conv["unread_count"] = conv["buyer_unread"] if is_buyer else conv["seller_unread"]
 
     logger.debug(f"Inbox fetched: user={user_id}, count={len(conversations)}")
     return {
@@ -336,13 +342,20 @@ def list_reports(
     def query_func(table):
         return (
             table
-            .select("*, conversation:conversations(id, listing_id, buyer_id, seller_id, status)")
+            .select("*")
             .order("created_at", desc=True)
             .range(skip, skip + limit - 1)
         )
 
     result = db.query("conversation_reports", query_func)
     reports = result.data if result.data else []
+
+    if reports:
+        conv_ids = [r["conversation_id"] for r in reports]
+        convs_map = batch_conversations(conv_ids, columns="id, listing_id, buyer_id, seller_id, status")
+        for r in reports:
+            r["conversation"] = convs_map.get(r["conversation_id"])
+
     return {"reports": reports, "total": len(reports)}
 
 
