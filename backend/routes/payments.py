@@ -230,8 +230,12 @@ async def checkout(
             raise HTTPException(status_code=404, detail="Ad plan not found")
 
         ad_price = ad_plan.get("price", 0)
-        ad_duration = payload.ad_duration_days if payload.ad_duration_days and payload.ad_duration_days > 0 else 1
-        ad_total = ad_price * ad_duration
+        plan_base_duration = ad_plan.get("duration_days", 1) or 1
+        ad_duration = payload.ad_duration_days if payload.ad_duration_days and payload.ad_duration_days > 0 else plan_base_duration
+        
+        # Calculation: (requested days / plan base days) * plan price
+        # Example: (10 days / 5 days) * 3 Riyal = 6 Riyal
+        ad_total = (ad_duration / plan_base_duration) * ad_price
         
         if ad_total > 0:
             total_amount += ad_total
