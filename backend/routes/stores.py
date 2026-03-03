@@ -380,11 +380,13 @@ def get_store_listings(
     store_id: str,
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
+    status: Optional[str] = Query(None, description="Filter by status (pending, active, sold, rejected, all)"),
     request: Request = None
 ):
     """
-    Get all active listings for a store (public view).
-    If the caller is the store owner, return all listings regardless of status.
+    Get listings for a store.
+    - Public: only active (and sold) listings.
+    - Owner: all listings regardless of status, with optional status filtering.
     """
     # Verify store exists
     store = db.select_one("stores", store_id)
@@ -397,7 +399,6 @@ def get_store_listings(
         if auth_header and auth_header.startswith("Bearer "):
             token = auth_header.split(" ")[1]
             try:
-                # Use decode_customer_token instead of dependency function
                 from utils.auth import decode_customer_token
                 current_user = decode_customer_token(token)
                 if current_user and current_user.get("id") == store.get("user_id"):
@@ -407,9 +408,21 @@ def get_store_listings(
 
     def query_func(table):
         query = table.select("*").eq("store_id", store_id)
-        if not is_owner:
-            query = query.eq("status", "active")
         
+        if status and status.lower() != "all":
+            # If a specific status is requested
+            if not is_owner and status not in ["active", "sold"]:
+                # Restricted: public can only search within active/sold
+                query = query.eq("status", "active")
+            else:
+                query = query.eq("status", status)
+        else:
+            # No status filter provided or "all" requested
+            if not is_owner:
+                # Public default: active only
+                query = query.eq("status", "active")
+            # if is_owner and no status: returns everything for that store (all statuses)
+
         return (
             query
             .range(skip, skip + limit - 1)
@@ -419,20 +432,28 @@ def get_store_listings(
     result = db.query("listings", query_func)
     listings = result.data if result.data else []
 
+    # Finalize seller info
     seller_phone = store.get("store_number")
     if not seller_phone and store.get("user_id"):
         user = db.select_one("app_users", store.get("user_id"))
         if user:
             seller_phone = user.get("phone_number")
 
-    # Batch fetch images and locations — 1 query instead of N
+    # Batch enrichment — 1 query per related table instead of N
     if listings:
         listing_ids = [l["id"] for l in listings]
-        from utils.helpers import batch_listing_images, batch_locations
+        from utils.helpers import batch_listing_images, batch_locations, batch_categories
+        
         images_map = batch_listing_images(listing_ids)
         
         location_ids = list({l["location_id"] for l in listings if l.get("location_id")})
         locations_map = batch_locations(location_ids)
+        
+        category_ids = list({l["category_id"] for l in listings if l.get("category_id")})
+        categories_map = batch_categories(category_ids)
+        
+        parent_cat_ids = list({cat.get("parent_id") for cat in categories_map.values() if cat.get("parent_id")})
+        parent_categories_map = batch_categories(parent_cat_ids) if parent_cat_ids else {}
         
         # Batch fetch Wilayat details (cities)
         places = list({l["place"] for l in listings if l.get("place")})
@@ -447,7 +468,25 @@ def get_store_listings(
 
         for listing in listings:
             listing["images"] = images_map.get(listing["id"], [])
+            listing["seller_type"] = "store"
+            listing["store_name"] = store.get("name_en") or store.get("name")
+            listing["store_logo"] = store.get("logo")
+            listing["store_id"] = store["id"]
+            listing["seller_phone_number"] = seller_phone
             
+            # Categories
+            cat = categories_map.get(listing.get("category_id"))
+            if cat:
+                listing["category_name_en"] = cat.get("name_en")
+                listing["category_name_ar"] = cat.get("name_ar")
+                p_id = cat.get("parent_id")
+                if p_id:
+                    p_cat = parent_categories_map.get(p_id)
+                    if p_cat:
+                        listing["parent_category_name_en"] = p_cat.get("name_en")
+                        listing["parent_category_name_ar"] = p_cat.get("name_ar")
+
+            # Locations
             if listing.get("location_id"):
                 loc = locations_map.get(listing["location_id"])
                 if loc:
@@ -455,21 +494,18 @@ def get_store_listings(
                     listing["location_name_en"] = loc.get("name_en")
                     listing["location_name_ar"] = loc.get("name_ar")
             
-            # Inject Wilayat details
+            # Wilayat details
             if listing.get("place") and listing.get("location_id"):
                 wilayat = wilayats_map.get((listing["place"], listing["location_id"]))
                 if wilayat:
                     listing["place_name_en"] = wilayat.get("name_en")
                     listing["place_name_ar"] = wilayat.get("name_ar")
-            
-            # Inject store info since this is a store listing
-            listing["seller_type"] = "store"
-            listing["store_name"] = store.get("name_en") or store.get("name")
-            listing["store_logo"] = store.get("logo")
-            listing["store_id"] = store["id"]
-            listing["seller_phone_number"] = seller_phone
+                    listing["wilayat_id"] = wilayat.get("id")
+                    listing["wilayat_name_en"] = wilayat.get("name_en")
+                    listing["wilayat_name_ar"] = wilayat.get("name_ar")
 
     return listings
+
 
 
 # -------------------------------------------------
