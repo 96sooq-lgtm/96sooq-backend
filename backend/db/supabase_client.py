@@ -13,14 +13,17 @@ class SupabaseDB:
     
     @classmethod
     def get_client(cls) -> Client:
-        """Get a fresh Supabase client to prevent stale HTTP/2 RemoteProtocolError"""
-        if not settings.supabase_url or not settings.supabase_service_role_key:
-            raise ValueError("Supabase URL and Service Role Key must be set")
+        """Get or create Supabase client (singleton pattern)"""
+        if cls._client is None:
+            if not settings.supabase_url or not settings.supabase_service_role_key:
+                raise ValueError("Supabase URL and Service Role Key must be set")
 
-        return create_client(
-            supabase_url=settings.supabase_url,
-            supabase_key=settings.supabase_service_role_key
-        )
+            cls._client = create_client(
+                supabase_url=settings.supabase_url,
+                supabase_key=settings.supabase_service_role_key
+            )
+        
+        return cls._client
     
     @classmethod
     def insert(cls, table: str, data: Dict[str, Any]) -> Dict[str, Any]:

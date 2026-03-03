@@ -849,19 +849,11 @@ def list_all_listings_admin(
                 if loc:
                     location_details["governorate_name_en"] = loc.get("name_en")
                     location_details["governorate_name_ar"] = loc.get("name_ar")
-                    listing["location_name_en"] = loc.get("name_en")
-                    listing["location_name_ar"] = loc.get("name_ar")
             
             # Wilayat details
             if listing.get("place") and listing.get("location_id"):
                 wilayat = wilayats_map.get((listing["place"], listing["location_id"]))
                 if wilayat:
-                    listing["place_name_en"] = wilayat.get("name_en")
-                    listing["place_name_ar"] = wilayat.get("name_ar")
-                    listing["wilayat_id"] = wilayat.get("id")
-                    listing["wilayat_name_en"] = wilayat.get("name_en")
-                    listing["wilayat_name_ar"] = wilayat.get("name_ar")
-                    
                     location_details["wilayat_name_en"] = wilayat.get("name_en")
                     location_details["wilayat_name_ar"] = wilayat.get("name_ar")
             
