@@ -1,25 +1,27 @@
 -- ================================================================
--- Migration 25: Correct Realtime Configuration
--- Ensures that all columns are sent in the Realtime message payload.
+-- Migration 25: Correct Realtime Configuration (Robust Version)
+-- Ensuring full payloads are sent during database change events.
 -- ================================================================
 
--- 1. Ensure tables are in the Realtime Publication
--- This enables the "Postgres Changes" feature for these tables.
-DO $realtime$
+-- 1. Safely add tables to publication if not already present
+DO $$
 BEGIN
-    ALTER PUBLICATION supabase_realtime ADD TABLE messages;
-EXCEPTION WHEN others THEN NULL;
-END $realtime$;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' AND tablename = 'messages'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE messages;
+    END IF;
 
-DO $realtime2$
-BEGIN
-    ALTER PUBLICATION supabase_realtime ADD TABLE conversations;
-EXCEPTION WHEN others THEN NULL;
-END $realtime2$;
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables 
+        WHERE pubname = 'supabase_realtime' AND tablename = 'conversations'
+    ) THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE conversations;
+    END IF;
+END $$;
 
--- 2. Set REPLICA IDENTITY to FULL
--- By default, Postgres only sends the Primary Key for updates.
--- "FULL" forces Postgres to send the entire row, which is 
--- necessary for the frontend to update UI components immediately.
+-- 2. CRITICAL: Ensure ALL data is sent in the Realtime payload
+-- This is what allows the frontend to update instantly without a reload.
 ALTER TABLE messages      REPLICA IDENTITY FULL;
 ALTER TABLE conversations REPLICA IDENTITY FULL;
