@@ -61,12 +61,23 @@ async def global_exception_handler(request: Request, exc: Exception):
         f"Unhandled exception on {request.method} {request.url.path}: "
         f"{type(exc).__name__}: {exc}\n{traceback.format_exc()}"
     )
+    
+    # We expose the exact error and traceback in development/testing
+    # so the frontend developers can immediately know what went wrong
+    # without checking the server logs.
+    error_detail = {
+        "detail": str(exc) or "An internal error occurred.",
+        "error_type": type(exc).__name__,
+        "path": request.url.path,
+        "method": request.method
+    }
+    
+    if settings.debug:
+        error_detail["traceback"] = traceback.format_exc().splitlines()
+        
     return JSONResponse(
         status_code=500,
-        content={
-            "detail": "An internal error occurred. Please try again later.",
-            "error_type": type(exc).__name__,
-        }
+        content=error_detail
     )
 
 # CORS middleware
