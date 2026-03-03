@@ -773,14 +773,25 @@ def list_all_listings_admin(
         promos_res = db.select_in("listing_promotions", "listing_id", listing_ids)
         promotions_map = {}
         if promos_res:
+            plan_ids = list({p["plan_id"] for p in promos_res if p.get("plan_id")})
+            plans_res = db.select_in("pricing_plans", "id", plan_ids) if plan_ids else []
+            plans_map = {p["id"]: p for p in plans_res}
+            
             from datetime import datetime
             now_str = datetime.utcnow().isoformat()
             for promo in promos_res:
                 if promo.get("status") == "active" and (promo.get("end_date") or "") >= now_str:
                     pid = promo["listing_id"]
+                    plan = plans_map.get(promo.get("plan_id"))
+                    
                     if pid not in promotions_map:
                         promotions_map[pid] = []
-                    promotions_map[pid].append(promo)
+                    promotions_map[pid].append({
+                        "id": promo.get("id"),
+                        "name_en": plan.get("name_en") if plan else "Unknown",
+                        "name_ar": plan.get("name_ar") if plan else "Unknown",
+                        "plan_id": promo.get("plan_id")
+                    })
 
         # Batch fetch Wilayat details (cities)
         places = list({l["place"] for l in listings if l.get("place")})
@@ -830,11 +841,14 @@ def list_all_listings_admin(
                         listing["parent_category_name_en"] = parent_cat.get("name_en")
                         listing["parent_category_name_ar"] = parent_cat.get("name_ar")
 
+            location_details = {}
+            
             # Locations
             if listing.get("location_id"):
                 loc = locations_map.get(listing["location_id"])
                 if loc:
-                    listing["location_details"] = loc
+                    location_details["governorate_name_en"] = loc.get("name_en")
+                    location_details["governorate_name_ar"] = loc.get("name_ar")
                     listing["location_name_en"] = loc.get("name_en")
                     listing["location_name_ar"] = loc.get("name_ar")
             
@@ -847,6 +861,11 @@ def list_all_listings_admin(
                     listing["wilayat_id"] = wilayat.get("id")
                     listing["wilayat_name_en"] = wilayat.get("name_en")
                     listing["wilayat_name_ar"] = wilayat.get("name_ar")
+                    
+                    location_details["wilayat_name_en"] = wilayat.get("name_en")
+                    location_details["wilayat_name_ar"] = wilayat.get("name_ar")
+            
+            listing["location_details"] = location_details if location_details else None
     
     return listings
 
