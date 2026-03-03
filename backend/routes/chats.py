@@ -65,13 +65,17 @@ def _get_participant_profiles(conv: dict) -> dict:
             profiles[uid] = {
                 "name": store.get("name_en") or store.get("name") or "Store",
                 "image": get_viewable_image_url(store.get("logo")),
-                "type": "store"
+                "type": "store",
+                "store_name": store.get("name_en") or store.get("name"),
+                "store_logo": get_viewable_image_url(store.get("logo"))
             }
         else:
             profiles[uid] = {
                 "name": user.get("name") or "User",
                 "image": get_viewable_image_url(user.get("profile_picture")),
-                "type": "individual"
+                "type": "individual",
+                "store_name": None,
+                "store_logo": None
             }
     return profiles
 
@@ -204,10 +208,20 @@ def get_inbox(
                 conv["other_participant_name"] = other_store.get("name_en") or other_store.get("name")
                 conv["other_participant_image"] = get_viewable_image_url(other_store.get("logo"))
                 conv["other_participant_type"] = "store"
+                conv["store_name"] = other_store.get("name_en") or other_store.get("name")
+                conv["store_logo"] = get_viewable_image_url(other_store.get("logo"))
+                # Alias for convenience as requested
+                conv["sender_name"] = conv["other_participant_name"]
+                conv["sender_logo"] = conv["other_participant_image"]
             else:
                 conv["other_participant_name"] = other_user.get("name") or "User"
                 conv["other_participant_image"] = get_viewable_image_url(other_user.get("profile_picture"))
                 conv["other_participant_type"] = "individual"
+                conv["store_name"] = None
+                conv["store_logo"] = None
+                # Alias for convenience as requested
+                conv["sender_name"] = conv["other_participant_name"]
+                conv["sender_logo"] = conv["other_participant_image"]
 
             conv["my_role"] = "buyer" if is_buyer else "seller"
             conv["unread_count"] = conv["buyer_unread"] if is_buyer else conv["seller_unread"]
@@ -263,6 +277,9 @@ def get_messages(
             p = profiles.get(sender_id, {})
             msg["sender_name"] = p.get("name")
             msg["sender_image"] = p.get("image")
+            msg["sender_logo"] = p.get("image")
+            msg["store_name"] = p.get("store_name")
+            msg["store_logo"] = p.get("store_logo")
 
     # Reverse so client receives oldest-first (natural chat order)
     return list(reversed(messages))
@@ -311,6 +328,9 @@ def send_message(
     p = profiles.get(user_id, {})
     message["sender_name"] = p.get("name")
     message["sender_image"] = p.get("image")
+    message["sender_logo"] = p.get("image")
+    message["store_name"] = p.get("store_name")
+    message["store_logo"] = p.get("store_logo")
 
     # ──────────────────────────────────────────────────────────────────
     # REALTIME BROADCAST — CRITICAL FIX

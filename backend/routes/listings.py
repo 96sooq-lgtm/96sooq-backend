@@ -271,7 +271,7 @@ def list_listings(
         if promos_res:
             now_str = datetime.utcnow().isoformat()
             for promo in promos_res:
-                if promo.get("status") == "active" and promo.get("end_date", "") >= now_str:
+                if promo.get("status") == "active" and (promo.get("end_date") or "") >= now_str:
                     pid = promo["listing_id"]
                     if pid not in promotions_map:
                         promotions_map[pid] = []
@@ -399,7 +399,7 @@ def get_my_listings(
             from datetime import datetime
             now_str = datetime.utcnow().isoformat()
             for promo in promos_res:
-                if promo.get("status") == "active" and promo.get("end_date", "") >= now_str:
+                if promo.get("status") == "active" and (promo.get("end_date") or "") >= now_str:
                     pid = promo["listing_id"]
                     if pid not in promotions_map:
                         promotions_map[pid] = []
@@ -550,10 +550,30 @@ def get_listing(listing_id: str, current_user: Optional[dict] = Depends(get_opti
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     
-    # Fetch images
+    # Defaults
+    listing["seller_type"] = "individual"
+    listing["is_favorite"] = False
+    listing["promotions"] = []
+    
+    # 1. Fetch images
     images_map = batch_listing_images([listing_id])
     listing["images"] = images_map.get(listing_id, [])
     
+    # 2. Fetch Category details
+    if listing.get("category_id"):
+        cat = db.select_one("categories", listing["category_id"])
+        if cat:
+            listing["category_name_en"] = cat.get("name_en")
+            listing["category_name_ar"] = cat.get("name_ar")
+            
+            parent_id = cat.get("parent_id")
+            if parent_id:
+                parent_cat = db.select_one("categories", parent_id)
+                if parent_cat:
+                    listing["parent_category_name_en"] = parent_cat.get("name_en")
+                    listing["parent_category_name_ar"] = parent_cat.get("name_ar")
+    
+    # 3. Fetch Location details
     if listing.get("location_id"):
         loc = db.select_one("locations", listing["location_id"])
         if loc:
@@ -561,7 +581,7 @@ def get_listing(listing_id: str, current_user: Optional[dict] = Depends(get_opti
              listing["location_name_en"] = loc.get("name_en")
              listing["location_name_ar"] = loc.get("name_ar")
              
-             # Fetch Wilayat details if place exists
+             # Fetch Wilayat details if place name exists
              if listing.get("place"):
                  def wilayat_query(table):
                      return table.select("*").eq("type", "city").eq("name_en", listing["place"]).eq("parent_id", listing["location_id"])
@@ -574,6 +594,7 @@ def get_listing(listing_id: str, current_user: Optional[dict] = Depends(get_opti
                       listing["wilayat_name_en"] = wilayat.get("name_en")
                       listing["wilayat_name_ar"] = wilayat.get("name_ar")
              
+    # 4. Fetch Store / Seller details
     seller_phone = None
     if listing.get("store_id"):
         store = db.select_one("stores", listing["store_id"])
@@ -594,18 +615,19 @@ def get_listing(listing_id: str, current_user: Optional[dict] = Depends(get_opti
             
     listing["seller_phone_number"] = seller_phone
     
-    listing["is_favorite"] = False
+    # 5. Favorite status
     if current_user:
         fav = db.select("favorites", filters={"user_id": current_user["id"], "listing_id": listing_id})
         listing["is_favorite"] = bool(fav)
     
-    # Fetch active promotions
+    # 6. Fetch active promotions
     now_str = datetime.utcnow().isoformat()
     promos = db.select("listing_promotions", filters={"listing_id": listing_id, "status": "active"})
-    active_promos = [p for p in promos if p.get("end_date", "") >= now_str] if promos else []
+    active_promos = [p for p in promos if (p.get("end_date") or "") >= now_str] if promos else []
     listing["promotions"] = active_promos
     
     return listing
+
 
 
 @router.put("/{listing_id}", response_model=schemas.ListingOut)

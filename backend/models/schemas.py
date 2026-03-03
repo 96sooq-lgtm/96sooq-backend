@@ -426,7 +426,11 @@ class ConversationOut(BaseModel):
     listing: Optional[dict] = None      # joined listing snapshot
     other_participant_name: Optional[str] = None
     other_participant_image: Optional[str] = None
-    other_participant_type: Optional[str] = None
+    other_participant_type: Optional[str] = None # "store" | "individual"
+    store_name: Optional[str] = None     # Specific field for store name if applicable
+    store_logo: Optional[str] = None     # Specific field for store logo if applicable
+    sender_name: Optional[str] = None    # Alias for other_participant_name
+    sender_logo: Optional[str] = None    # Alias for other_participant_image
     created_at: Optional[str] = None
 
 
@@ -450,6 +454,9 @@ class MessageOut(BaseModel):
     sender_id: str
     sender_name: Optional[str] = None
     sender_image: Optional[str] = None
+    sender_logo: Optional[str] = None    # Alias for sender_image
+    store_name: Optional[str] = None
+    store_logo: Optional[str] = None
     content: Optional[str] = None
     message_type: str
     media_url: Optional[str] = None
