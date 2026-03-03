@@ -259,7 +259,17 @@ async def purchase_subscription(
         raise HTTPException(status_code=404, detail="Plan not found")
         
     duration_days = plan.get("duration_days", 30)
-    quota = plan.get("quota", 0) # -1 for unlimited
+    # Prevent duplicate purchase of unlimited plans
+    if quota == -1:
+        now_iso = datetime.utcnow().isoformat()
+        active_sub = db.select("user_subscriptions", filters={
+            "user_id": current_user["id"],
+            "plan_id": payload.plan_id,
+            "status": "active"
+        })
+        # Check if dates overlap
+        if active_sub and any((sub.get("end_date") or "") > now_iso for sub in active_sub):
+            raise HTTPException(status_code=400, detail="You already have an active subscription for this unlimited plan.")
     
     # Calculate dates
     start_date = datetime.utcnow()

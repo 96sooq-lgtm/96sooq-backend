@@ -73,6 +73,10 @@ def oauth_check_user(payload: OAuthCheckRequest):
         # User exists - return JWT token
         user = existing[0]
         
+        # Check if user is active
+        if not user.get("is_active", True):
+            raise HTTPException(status_code=403, detail="Account is locked or deactivated")
+            
         access_token = create_customer_token(data={
             "sub": user.get("email") or user.get("provider_id"),
             "role": "customer",

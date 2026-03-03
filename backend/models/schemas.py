@@ -274,6 +274,7 @@ class ListingUpdate(BaseModel):
     place_id: Optional[str] = None
     attributes_values: Optional[dict] = None
     status: Optional[str] = None
+    images: Optional[List[str]] = None
     
 class ListingOut(BaseModel):
     id: str

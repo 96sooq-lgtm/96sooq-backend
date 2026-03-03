@@ -256,6 +256,19 @@ def update_store(
     if "status" in update_data:
         del update_data["status"]
         
+    # Fix: Map wilayat_id to wilayat name
+    if "wilayat_id" in update_data:
+        wil_id = update_data.pop("wilayat_id")
+        if wil_id:
+            wilayat = db.select_one("locations", str(wil_id))
+            if not wilayat or wilayat.get("type") != "city":
+                raise HTTPException(status_code=400, detail="Invalid wilayat_id (must be a Wilayat/City)")
+            update_data["wilayat"] = wilayat.get("name_en")
+            
+    # Fix: Ensure governorate_id is string if provided
+    if "governorate_id" in update_data and update_data["governorate_id"]:
+        update_data["governorate_id"] = str(update_data["governorate_id"])
+        
     updated = db.update("stores", store_id, update_data)
     if not updated:
         raise HTTPException(status_code=500, detail="Failed to update store")

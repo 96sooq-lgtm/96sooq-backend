@@ -626,6 +626,16 @@ def get_listing(listing_id: str, current_user: Optional[dict] = Depends(get_opti
     active_promos = [p for p in promos if (p.get("end_date") or "") >= now_str] if promos else []
     listing["promotions"] = active_promos
     
+    # 7. Security: Block Unauthorized Access to Drafts/Rejected/Expired
+    is_admin = False
+    if current_user and current_user.get("role") == "admin":
+        is_admin = True
+    
+    is_owner = current_user and current_user.get("id") == listing.get("user_id")
+    
+    if listing["status"] != "active" and not is_owner and not is_admin:
+        raise HTTPException(status_code=403, detail="You do not have permission to view this listing")
+        
     return listing
 
 
@@ -645,6 +655,7 @@ def update_listing(
         raise HTTPException(status_code=403, detail="Not authorized to update this listing")
         
     update_data = payload.dict(exclude_unset=True)
+    
     # Block status update from user
     if "status" in update_data:
         del update_data["status"]
@@ -652,9 +663,6 @@ def update_listing(
     # Security/Loophole Fix:
     # If user edits an active listing (title, description, price, images, attributes),
     # we must revert status to 'pending_approval' to prevent content swapping.
-    # Exception: Maybe location or minor fields? But generally safer to re-approve.
-    
-    # Check if any sensitive fields are being updated
     sensitive_fields = ["title", "description", "price", "images", "attributes_values", "category_id"]
     is_sensitive_update = any(field in update_data for field in sensitive_fields)
     
@@ -668,10 +676,42 @@ def update_listing(
             update_data["attributes_values"], cat_id
         )
         
+    # Fix: Resolve place_id to place name and remove place_id from update
+    if "place_id" in update_data:
+        city_id = update_data.pop("place_id")
+        if city_id:
+            city = db.select_one("locations", city_id)
+            if not city or city.get("type") != "city":
+                raise HTTPException(status_code=400, detail="Invalid place_id (must be a City/Wilayat)")
+            update_data["place"] = city.get("name_en")
+            
+            # optionally update location_id to match city's parent if needed, but not strictly required
+            # as frontend usually sends both.
+            
+    # Fix: Handle Images
+    new_images = None
+    if "images" in update_data:
+        new_images = update_data.pop("images")
+        
     updated = db.update("listings", listing_id, update_data)
     if not updated:
         raise HTTPException(status_code=500, detail="Failed to update listing")
         
+    # Apply Image Changes
+    if new_images is not None:
+        # Delete old images
+        def delete_images(table):
+            return table.delete().eq("listing_id", listing_id)
+        db.query("listing_images", delete_images)
+        
+        # Insert new images
+        if new_images:
+            image_records = [
+                {"listing_id": listing_id, "image_url": url, "is_main": (i == 0), "display_order": i}
+                for i, url in enumerate(new_images)
+            ]
+            db.insert_many("listing_images", image_records)
+            
     return updated
 
 
