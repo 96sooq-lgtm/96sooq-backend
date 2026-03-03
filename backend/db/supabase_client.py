@@ -92,17 +92,36 @@ class SupabaseDB:
     
     @classmethod
     def query(cls, table: str, query_func) -> Any:
-        """
-        Execute a custom query for complex operations
-        
-        Example:
-            def custom_query(q):
-                return q.select("*").gt("age", 18).limit(10)
-            
-            results = SupabaseDB.query("users", custom_query)
-        """
+        """Execute a custom query"""
         client = cls.get_client()
         return query_func(client.table(table)).execute()
+
+    @classmethod
+    def broadcast(cls, channel: str, event: str, payload: Dict[str, Any]) -> bool:
+        """
+        Broadcast a Realtime message directly (ephemeral).
+        Useful for low-latency notifications that don't need DB persistence
+        or to supplement DB inserts with instant UI updates.
+        """
+        import httpx
+        try:
+            url = f"{settings.supabase_url}/realtime/v1/broadcast"
+            # We use the Service Role key to bypass any restrictions
+            headers = {
+                "apikey": settings.supabase_service_role_key,
+                "Authorization": f"Bearer {settings.supabase_service_role_key}",
+                "Content-Type": "application/json"
+            }
+            body = {
+                "topic": channel,
+                "event": event,
+                "payload": payload
+            }
+            with httpx.Client() as client:
+                response = client.post(url, headers=headers, json=body, timeout=5.0)
+                return response.status_code == 200
+        except Exception:
+            return False
 
 
 # Singleton instance

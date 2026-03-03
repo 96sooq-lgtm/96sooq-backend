@@ -249,6 +249,22 @@ def send_message(
     if not message:
         raise HTTPException(status_code=500, detail="Failed to send message")
 
+    # ──────────────────────────────────────────────────────────────────
+    # REALTIME BROADCAST — CRITICAL FIX
+    # Manually push the message to the conversation channel.
+    # This ensures it shows up instantly for the receiver.
+    # ──────────────────────────────────────────────────────────────────
+    try:
+        # Note: Frontend listens on channel f"conversation:{conversation_id}"
+        # We broadcast the specific message payload directly.
+        db.broadcast(
+            channel=f"conversation:{conversation_id}", 
+            event="new_message", 
+            payload=message
+        )
+    except Exception as e:
+        logger.warning(f"Realtime broadcast failed: {e} (DB insert still succeeded)")
+
     logger.info(f"Message sent via REST: conv={conversation_id}, sender={user_id}")
     return message
 
