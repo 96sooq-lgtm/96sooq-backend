@@ -21,7 +21,7 @@ from models.schemas import (
     ConversationInitiate, ConversationOut, ConversationListResponse,
     MessageCreate, MessageOut,
 )
-from utils.helpers import batch_listings, batch_conversations, batch_user_info, batch_stores, get_viewable_image_url
+from utils.helpers import batch_listings, batch_conversations, batch_user_info, batch_stores, batch_stores_by_user, get_viewable_image_url
 from typing import List, Optional
 
 logger = get_logger(__name__)
@@ -54,13 +54,7 @@ def _get_participant_profiles(conv: dict) -> dict:
     """Fetch profile info (name + image) for both participants in a conversation."""
     uids = [conv["buyer_id"], conv["seller_id"]]
     users_map = batch_user_info(uids)
-
-    # Check for stores (seller might be a store)
-    stores_map = {}
-    if conv["seller_id"]:
-        stores = db.select("stores", filters={"user_id": conv["seller_id"], "status": "active"})
-        if stores:
-            stores_map[conv["seller_id"]] = stores[0]
+    stores_map = batch_stores_by_user(uids)
 
     profiles = {}
     for uid in uids:
@@ -184,14 +178,37 @@ def get_inbox(
     result = db.query("conversations", query_func)
     conversations = result.data if result.data else []
 
-    # Batch fetch listing details (manual join to avoid PGRST200 if FK is missing)
     if conversations:
+        # 1. Batch fetch listing details
         listing_ids = [c["listing_id"] for c in conversations]
         listings_map = batch_listings(listing_ids, columns="id, title, price, currency, status")
+
+        # 2. Batch fetch participant profiles for the whole inbox page
+        uids = []
+        for c in conversations:
+            uids.extend([c["buyer_id"], c["seller_id"]])
+        
+        users_map = batch_user_info(uids)
+        stores_map = batch_stores_by_user(uids)
 
         for conv in conversations:
             conv["listing"] = listings_map.get(conv["listing_id"])
             is_buyer = conv["buyer_id"] == user_id
+            other_id = conv["seller_id"] if is_buyer else conv["buyer_id"]
+            
+            # Map Other Participant
+            other_user = users_map.get(other_id, {})
+            other_store = stores_map.get(other_id)
+            
+            if other_store:
+                conv["other_participant_name"] = other_store.get("name_en") or other_store.get("name")
+                conv["other_participant_image"] = get_viewable_image_url(other_store.get("logo"))
+                conv["other_participant_type"] = "store"
+            else:
+                conv["other_participant_name"] = other_user.get("name") or "User"
+                conv["other_participant_image"] = get_viewable_image_url(other_user.get("profile_picture"))
+                conv["other_participant_type"] = "individual"
+
             conv["my_role"] = "buyer" if is_buyer else "seller"
             conv["unread_count"] = conv["buyer_unread"] if is_buyer else conv["seller_unread"]
 

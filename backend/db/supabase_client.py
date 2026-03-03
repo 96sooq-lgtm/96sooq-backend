@@ -100,27 +100,34 @@ class SupabaseDB:
     def broadcast(cls, channel: str, event: str, payload: Dict[str, Any]) -> bool:
         """
         Broadcast a Realtime message directly (ephemeral).
-        Useful for low-latency notifications that don't need DB persistence
-        or to supplement DB inserts with instant UI updates.
+        Using the Supabase Realtime REST API.
         """
         import httpx
         try:
-            url = f"{settings.supabase_url}/realtime/v1/broadcast"
-            # We use the Service Role key to bypass any restrictions
+            # Correct endpoint is /realtime/v1/api/broadcast
+            url = f"{settings.supabase_url.rstrip('/')}/realtime/v1/api/broadcast"
+            
             headers = {
                 "apikey": settings.supabase_service_role_key,
                 "Authorization": f"Bearer {settings.supabase_service_role_key}",
                 "Content-Type": "application/json"
             }
+            
+            # The Realtime v2 REST protocol expects a message object
             body = {
                 "topic": channel,
                 "event": event,
-                "payload": payload
+                "payload": payload,
+                "type": "broadcast"
             }
+            
             with httpx.Client() as client:
                 response = client.post(url, headers=headers, json=body, timeout=5.0)
+                if response.status_code != 200:
+                    logger.warning(f"Realtime broadcast HTTP error: {response.status_code} - {response.text}")
                 return response.status_code == 200
-        except Exception:
+        except Exception as e:
+            logger.error(f"Realtime broadcast exception: {e}")
             return False
 
 

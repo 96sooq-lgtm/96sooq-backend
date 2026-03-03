@@ -51,12 +51,17 @@ def batch_listing_images(listing_ids: List[str]) -> Dict[str, List[str]]:
 def batch_user_info(user_ids: List[str]) -> Dict[str, Dict]:
     """
     Fetch user info for multiple user IDs in a single DB query.
-    Returns a dict: { user_id: {id, name, phone_number, email} }
+    Returns a dict: { user_id: {id, name, phone_number, email, profile_picture} }
     """
     if not user_ids:
         return {}
 
-    users = db.select_in("app_users", "id", list(set(user_ids)), columns="id,name,phone_number,email")
+    users = db.select_in(
+        "app_users", 
+        "id", 
+        list(set(user_ids)), 
+        columns="id,name,phone_number,email,profile_picture"
+    )
     return {u["id"]: u for u in users}
 
 
@@ -82,6 +87,18 @@ def batch_stores(store_ids: List[str]) -> Dict[str, Dict]:
 
     stores = db.select_in("stores", "id", list(set(store_ids)))
     return {store["id"]: store for store in stores}
+
+
+def batch_stores_by_user(user_ids: List[str]) -> Dict[str, Dict]:
+    """
+    Fetch stores for a list of user IDs.
+    Returns a dict: { user_id: {store data} }
+    """
+    if not user_ids:
+        return {}
+
+    stores = db.select_in("stores", "user_id", list(set(user_ids)))
+    return {store["user_id"]: store for store in stores if store.get("status") == "active"}
 
 
 def batch_categories(category_ids: List[str]) -> Dict[str, Dict]:

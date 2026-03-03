@@ -424,6 +424,9 @@ class ConversationOut(BaseModel):
     unread_count: Optional[int] = 0
     my_role: Optional[str] = None       # "buyer" | "seller"
     listing: Optional[dict] = None      # joined listing snapshot
+    other_participant_name: Optional[str] = None
+    other_participant_image: Optional[str] = None
+    other_participant_type: Optional[str] = None
     created_at: Optional[str] = None
 
 
