@@ -445,6 +445,8 @@ class MessageOut(BaseModel):
     id: str
     conversation_id: str
     sender_id: str
+    sender_name: Optional[str] = None
+    sender_image: Optional[str] = None
     content: Optional[str] = None
     message_type: str
     media_url: Optional[str] = None

@@ -21,7 +21,7 @@ from models.schemas import (
     ConversationInitiate, ConversationOut, ConversationListResponse,
     MessageCreate, MessageOut,
 )
-from utils.helpers import batch_listings, batch_conversations
+from utils.helpers import batch_listings, batch_conversations, batch_user_info, batch_stores, get_viewable_image_url
 from typing import List, Optional
 
 logger = get_logger(__name__)
@@ -48,6 +48,38 @@ def _assert_participant(conv: dict, user_id: str) -> None:
     """Raise 403 if user is not buyer or seller in the conversation."""
     if conv["buyer_id"] != user_id and conv["seller_id"] != user_id:
         raise HTTPException(status_code=403, detail="Access denied")
+
+
+def _get_participant_profiles(conv: dict) -> dict:
+    """Fetch profile info (name + image) for both participants in a conversation."""
+    uids = [conv["buyer_id"], conv["seller_id"]]
+    users_map = batch_user_info(uids)
+
+    # Check for stores (seller might be a store)
+    stores_map = {}
+    if conv["seller_id"]:
+        stores = db.select("stores", filters={"user_id": conv["seller_id"], "status": "active"})
+        if stores:
+            stores_map[conv["seller_id"]] = stores[0]
+
+    profiles = {}
+    for uid in uids:
+        user = users_map.get(uid, {})
+        store = stores_map.get(uid)
+        
+        if store:
+            profiles[uid] = {
+                "name": store.get("name_en") or store.get("name") or "Store",
+                "image": get_viewable_image_url(store.get("logo")),
+                "type": "store"
+            }
+        else:
+            profiles[uid] = {
+                "name": user.get("name") or "User",
+                "image": get_viewable_image_url(user.get("profile_picture")),
+                "type": "individual"
+            }
+    return profiles
 
 
 def _get_conv_or_404(conversation_id: str) -> dict:
@@ -207,6 +239,14 @@ def get_messages(
     result = db.query("messages", query_func)
     messages = result.data if result.data else []
 
+    if messages:
+        profiles = _get_participant_profiles(conv)
+        for msg in messages:
+            sender_id = msg["sender_id"]
+            p = profiles.get(sender_id, {})
+            msg["sender_name"] = p.get("name")
+            msg["sender_image"] = p.get("image")
+
     # Reverse so client receives oldest-first (natural chat order)
     return list(reversed(messages))
 
@@ -248,6 +288,12 @@ def send_message(
     })
     if not message:
         raise HTTPException(status_code=500, detail="Failed to send message")
+
+    # Fetch profile for the broadcast
+    profiles = _get_participant_profiles(conv)
+    p = profiles.get(user_id, {})
+    message["sender_name"] = p.get("name")
+    message["sender_image"] = p.get("image")
 
     # ──────────────────────────────────────────────────────────────────
     # REALTIME BROADCAST — CRITICAL FIX
