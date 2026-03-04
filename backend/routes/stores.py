@@ -455,9 +455,10 @@ def get_store_listings(
     # Batch enrichment — 1 query per related table instead of N
     if listings:
         listing_ids = [l["id"] for l in listings]
-        from utils.helpers import batch_listing_images, batch_locations, batch_categories
+        from utils.helpers import batch_listing_images, batch_locations, batch_categories, batch_listing_promotions
         
         images_map = batch_listing_images(listing_ids)
+        promotions_map = batch_listing_promotions(listing_ids)
         
         location_ids = list({l["location_id"] for l in listings if l.get("location_id")})
         locations_map = batch_locations(location_ids)
@@ -481,6 +482,7 @@ def get_store_listings(
 
         for listing in listings:
             listing["images"] = images_map.get(listing["id"], [])
+            listing["promotions"] = promotions_map.get(listing["id"], [])
             listing["seller_type"] = "store"
             listing["store_name"] = store.get("name_en") or store.get("name")
             listing["store_logo"] = store.get("logo")

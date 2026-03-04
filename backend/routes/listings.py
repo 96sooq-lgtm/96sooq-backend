@@ -266,16 +266,8 @@ def list_listings(
         stores_map = batch_stores(store_ids)
         
         # Batch fetch active promotions
-        promos_res = db.select_in("listing_promotions", "listing_id", listing_ids)
-        promotions_map = {}
-        if promos_res:
-            now_str = datetime.utcnow().isoformat()
-            for promo in promos_res:
-                if promo.get("status") == "active" and (promo.get("end_date") or "") >= now_str:
-                    pid = promo["listing_id"]
-                    if pid not in promotions_map:
-                        promotions_map[pid] = []
-                    promotions_map[pid].append(promo)
+        from utils.helpers import batch_listing_promotions
+        promotions_map = batch_listing_promotions(listing_ids)
                     
         # Batch fetch users for phone numbers
         user_ids = list({l["user_id"] for l in listings if l.get("user_id")})
@@ -393,17 +385,8 @@ def get_my_listings(
         stores_map = batch_stores(store_ids)
         
         # Batch fetch active promotions
-        promos_res = db.select_in("listing_promotions", "listing_id", listing_ids)
-        promotions_map = {}
-        if promos_res:
-            from datetime import datetime
-            now_str = datetime.utcnow().isoformat()
-            for promo in promos_res:
-                if promo.get("status") == "active" and (promo.get("end_date") or "") >= now_str:
-                    pid = promo["listing_id"]
-                    if pid not in promotions_map:
-                        promotions_map[pid] = []
-                    promotions_map[pid].append(promo)
+        from utils.helpers import batch_listing_promotions
+        promotions_map = batch_listing_promotions(listing_ids)
                     
         # Batch fetch users for phone numbers
         users_res = db.select_in("app_users", "id", [user_id])
@@ -491,6 +474,9 @@ def get_user_listings(
     if listings:
         listing_ids = [l["id"] for l in listings]
         images_map = batch_listing_images(listing_ids)
+        
+        from utils.helpers import batch_listing_promotions
+        promotions_map = batch_listing_promotions(listing_ids)
 
         location_ids = list({l["location_id"] for l in listings if l.get("location_id")})
         locations_map = batch_locations(location_ids)
@@ -517,6 +503,7 @@ def get_user_listings(
         
         for listing in listings:
             listing["images"] = images_map.get(listing["id"], [])
+            listing["promotions"] = promotions_map.get(listing["id"], [])
             listing["is_favorite"] = listing["id"] in fav_set
             
             if listing.get("location_id"):
@@ -621,10 +608,8 @@ def get_listing(listing_id: str, current_user: Optional[dict] = Depends(get_opti
         listing["is_favorite"] = bool(fav)
     
     # 6. Fetch active promotions
-    now_str = datetime.utcnow().isoformat()
-    promos = db.select("listing_promotions", filters={"listing_id": listing_id, "status": "active"})
-    active_promos = [p for p in promos if (p.get("end_date") or "") >= now_str] if promos else []
-    listing["promotions"] = active_promos
+    from utils.helpers import batch_listing_promotions
+    listing["promotions"] = batch_listing_promotions([listing_id]).get(listing_id, [])
     
     # 7. Security: Block Unauthorized Access to Drafts/Rejected/Expired
     is_admin = False
@@ -770,28 +755,8 @@ def list_all_listings_admin(
         locations_map = batch_locations(location_ids)
         
         # Batch fetch active promotions
-        promos_res = db.select_in("listing_promotions", "listing_id", listing_ids)
-        promotions_map = {}
-        if promos_res:
-            plan_ids = list({p["plan_id"] for p in promos_res if p.get("plan_id")})
-            plans_res = db.select_in("pricing_plans", "id", plan_ids) if plan_ids else []
-            plans_map = {p["id"]: p for p in plans_res}
-            
-            from datetime import datetime
-            now_str = datetime.utcnow().isoformat()
-            for promo in promos_res:
-                if promo.get("status") == "active" and (promo.get("end_date") or "") >= now_str:
-                    pid = promo["listing_id"]
-                    plan = plans_map.get(promo.get("plan_id"))
-                    
-                    if pid not in promotions_map:
-                        promotions_map[pid] = []
-                    promotions_map[pid].append({
-                        "id": promo.get("id"),
-                        "name_en": plan.get("name_en") if plan else "Unknown",
-                        "name_ar": plan.get("name_ar") if plan else "Unknown",
-                        "plan_id": promo.get("plan_id")
-                    })
+        from utils.helpers import batch_listing_promotions
+        promotions_map = batch_listing_promotions(listing_ids)
 
         # Batch fetch Wilayat details (cities)
         places = list({l["place"] for l in listings if l.get("place")})

@@ -137,3 +137,43 @@ def batch_conversations(conversation_ids: List[str], columns: str = "*") -> Dict
     convs = db.select_in("conversations", "id", list(set(conversation_ids)), columns=columns)
     return {c["id"]: c for c in convs}
 
+
+def batch_listing_promotions(listing_ids: List[str]) -> Dict[str, List[Dict]]:
+    """
+    Fetch active promotions for multiple listings and attach plan names.
+    Returns a dict: { listing_id: [ {id, name_en, name_ar, plan_id}, ... ] }
+    """
+    if not listing_ids:
+        return {}
+
+    promos_res = db.select_in("listing_promotions", "listing_id", list(set(listing_ids)))
+    
+    promotions_map = {}
+    if promos_res:
+        plan_ids = list({p["plan_id"] for p in promos_res if p.get("plan_id")})
+        plans_res = db.select_in("pricing_plans", "id", plan_ids) if plan_ids else []
+        plans_map = {p["id"]: p for p in plans_res}
+        
+        from datetime import datetime
+        now_str = datetime.utcnow().isoformat()
+        for promo in promos_res:
+            if promo.get("status") == "active" and (promo.get("end_date") or "") >= now_str:
+                pid = promo["listing_id"]
+                plan = plans_map.get(promo.get("plan_id"))
+                
+                # Only include promotions that are actually advertisement plans
+                if plan and plan.get("type") == "ad":
+                    if pid not in promotions_map:
+                        promotions_map[pid] = []
+                        
+                    promotions_map[pid].append({
+                        "id": promo.get("id"),
+                        "name_en": plan.get("name_en"),
+                        "name_ar": plan.get("name_ar"),
+                        "plan_id": promo.get("plan_id"),
+                        "start_date": promo.get("start_date"),
+                        "end_date": promo.get("end_date")
+                    })
+                
+    return promotions_map
+
