@@ -57,6 +57,112 @@ def enrich_attributes_with_type(attributes_values: dict, category_id: str) -> di
         }
     return enriched_attrs
 
+
+def get_wilayats_map(listings: list) -> dict:
+    places = list({l.get("place") for l in listings if l.get("place")})
+    location_ids = list({l.get("location_id") for l in listings if l.get("location_id")})
+    wilayats_map = {}
+    if places and location_ids:
+        def wilayat_query(table):
+            return table.select("*").eq("type", "city").in_("name_en", places).in_("parent_id", location_ids)
+        wilayats_res = db.query("locations", wilayat_query)
+        if wilayats_res.data:
+            for w in wilayats_res.data:
+                wilayats_map[(w.get("name_en"), w.get("parent_id"))] = w
+    return wilayats_map
+
+def get_favorites_set(current_user: Optional[dict]) -> set:
+    fav_set = set()
+    if current_user:
+        favs = db.select("favorites", filters={"user_id": current_user["id"]})
+        fav_set = {f["listing_id"] for f in favs}
+    return fav_set
+
+def format_joined_listing(listing: dict, wilayats_map: dict, fav_set: set) -> dict:
+    from datetime import datetime
+    now_str = datetime.utcnow().isoformat()
+    from utils.helpers import get_viewable_image_url
+    
+    # Categories
+    cat = listing.get("categories")
+    if isinstance(cat, dict):
+        listing["category_name_en"] = cat.get("name_en")
+        listing["category_name_ar"] = cat.get("name_ar")
+        
+    # Images
+    imgs = listing.get("listing_images") or []
+    sorted_imgs = sorted(imgs, key=lambda x: (not x.get("is_main", False), x.get("display_order", 0)))
+    listing["images"] = [get_viewable_image_url(img.get("image_url")) for img in sorted_imgs]
+    listing.pop("listing_images", None)
+    
+    # Promotions
+    promos = []
+    for promo in listing.get("listing_promotions") or []:
+        if promo.get("status") == "active" and (promo.get("end_date") or "") >= now_str:
+            plan = promo.get("pricing_plans")
+            if plan and plan.get("type") == "ad":
+                promos.append({
+                    "id": promo.get("id"),
+                    "name_en": plan.get("name_en"),
+                    "name_ar": plan.get("name_ar"),
+                    "plan_id": promo.get("plan_id"),
+                    "start_date": promo.get("start_date"),
+                    "end_date": promo.get("end_date")
+                })
+    listing["promotions"] = promos
+    listing.pop("listing_promotions", None)
+    
+    # Favorites
+    listing["is_favorite"] = listing.get("id") in fav_set
+
+    # Locations
+    loc = listing.get("locations")
+    if isinstance(loc, dict):
+        listing["location_details"] = loc
+        listing["location_name_en"] = loc.get("name_en")
+        listing["location_name_ar"] = loc.get("name_ar")
+    listing.pop("locations", None)
+
+    # Wilayats
+    if listing.get("place") and listing.get("location_id"):
+        wilayat = wilayats_map.get((listing.get("place"), listing.get("location_id")))
+        if wilayat:
+            listing["place_name_en"] = wilayat.get("name_en")
+            listing["place_name_ar"] = wilayat.get("name_ar")
+            listing["wilayat_id"] = wilayat.get("id")
+            listing["wilayat_name_en"] = wilayat.get("name_en")
+            listing["wilayat_name_ar"] = wilayat.get("name_ar")
+
+    # Store / Seller
+    seller_phone = None
+    store = listing.get("stores")
+    listing["seller_type"] = "individual"
+    if isinstance(store, dict):
+        listing["seller_type"] = "store"
+        listing["store_name"] = store.get("name_en") or store.get("name")
+        listing["store_logo"] = store.get("logo")
+        listing["store_id"] = store.get("id")
+        seller_phone = store.get("store_number")
+        if not listing.get("location_name_en") and store.get("locations"):
+            s_loc = store.get("locations")
+            if isinstance(s_loc, dict):
+                listing["location_name_en"] = s_loc.get("name_en")
+                listing["location_name_ar"] = s_loc.get("name_ar")
+    listing.pop("stores", None)
+    
+    user = listing.get("app_users")
+    if isinstance(user, dict):
+        listing["user_name"] = user.get("name")
+        listing["user_profile_picture"] = user.get("profile_picture")
+        if not seller_phone:
+            seller_phone = user.get("phone_number")
+    listing.pop("app_users", None)
+
+    listing["seller_phone_number"] = seller_phone
+
+    return listing
+
+
 # -------------------------------------------------
 # PUBLIC / CUSTOMER ENDPOINTS
 # -------------------------------------------------
@@ -221,7 +327,7 @@ def list_listings(
         
         # Only fetch active listings that are not expired
         # (expires_at is null for legacy listings that haven't been migrated yet)
-        query = table.select("*").eq("status", "active")
+        query = table.select("*, listing_images(*), stores(*, locations(*)), app_users(*), categories(*), locations(*), listing_promotions(*, pricing_plans(*))").eq("status", "active")
         query = query.or_(f"expires_at.gte.{now_str},expires_at.is.null")
         
         if category_id:
@@ -253,98 +359,10 @@ def list_listings(
     listings = result.data if result.data else []
     
     if listings:
-        # Batch fetch images — 1 query instead of N
-        listing_ids = [l["id"] for l in listings]
-        images_map = batch_listing_images(listing_ids)
-
-        # Batch fetch locations — 1 query instead of N
-        location_ids = list({l["location_id"] for l in listings if l.get("location_id")})
-        locations_map = batch_locations(location_ids)
-
-        # Batch fetch stores
-        store_ids = list({l["store_id"] for l in listings if l.get("store_id")})
-        stores_map = batch_stores(store_ids)
-        
-        # Batch fetch active promotions
-        from utils.helpers import batch_listing_promotions
-        promotions_map = batch_listing_promotions(listing_ids)
-                    
-        # Batch fetch users for phone numbers
-        user_ids = list({l["user_id"] for l in listings if l.get("user_id")})
-        users_res = db.select_in("app_users", "id", user_ids) if user_ids else []
-        users_map = {u["id"]: u for u in users_res}
-        
-        # Batch fetch favorites if user logged in
-        fav_set = set()
-        if current_user:
-            favs = db.select("favorites", filters={"user_id": current_user["id"]})
-            fav_set = {f["listing_id"] for f in favs}
-
-        # Batch fetch Wilayat details (cities)
-        # Filters: type='city', names in listing['place'], parent_ids in listing['location_id']
-        places = list({l["place"] for l in listings if l.get("place")})
-        wilayats_map = {}
-        if places and location_ids:
-            def wilayat_query(table):
-                return table.select("*").eq("type", "city").in_("name_en", places).in_("parent_id", location_ids)
-            wilayats_res = db.query("locations", wilayat_query)
-            if wilayats_res.data:
-                for w in wilayats_res.data:
-                    wilayats_map[(w["name_en"], w["parent_id"])] = w
-
-        for listing in listings:
-            listing["images"] = images_map.get(listing["id"], [])
-            listing["promotions"] = promotions_map.get(listing["id"], [])
-            listing["is_favorite"] = listing["id"] in fav_set
-            
-            if listing.get("location_id"):
-                loc = locations_map.get(listing["location_id"])
-                if loc:
-                    listing["location_details"] = loc
-                    listing["location_name_en"] = loc.get("name_en")
-                    listing["location_name_ar"] = loc.get("name_ar")
-            
-            # Fetch place name from locations if place_id exists (it might be in attributes or we need to check the DB)
-            # Actually, per ListingCreate, it's called 'place_id' in payload but saved as 'place' (name) or not saved?
-            # Wait, 07 migration added 'place' column as TEXT.
-            # Let's check if we can find the city by name or if we should have stored place_id.
-            # For now, let's try to find the city in locations_map if we had place_id, 
-            # but listings table only has location_id (state).
-            # The 'place' column in listings stores the name of the city.
-            
-            # Inject Wilayat details
-            if listing.get("place") and listing.get("location_id"):
-                wilayat = wilayats_map.get((listing["place"], listing["location_id"]))
-                if wilayat:
-                    listing["place_name_en"] = wilayat.get("name_en")
-                    listing["place_name_ar"] = wilayat.get("name_ar")
-
-            seller_phone = None
-            if listing.get("store_id"):
-                store = stores_map.get(listing["store_id"])
-                if store:
-                    listing["seller_type"] = "store"
-                    listing["store_name"] = store.get("name_en") or store.get("name")
-                    listing["store_logo"] = store.get("logo")
-                    listing["store_id"] = store["id"] # Ensure it's there
-                    seller_phone = store.get("store_number")
-                    
-                    # Store also has location_id and place. Let's use them if listing doesn't have them.
-                    if not listing.get("location_name_en") and store.get("location_id"):
-                        s_loc = locations_map.get(store["location_id"])
-                        if s_loc:
-                            listing["location_name_en"] = s_loc.get("name_en")
-                            listing["location_name_ar"] = s_loc.get("name_ar")
-            
-            if listing.get("user_id"):
-                user = users_map.get(listing["user_id"])
-                if user:
-                    listing["user_name"] = user.get("name")
-                    listing["user_profile_picture"] = user.get("profile_picture")
-                    if not seller_phone:
-                        seller_phone = user.get("phone_number")
-                    
-            listing["seller_phone_number"] = seller_phone
+        wilayats_map = get_wilayats_map(listings)
+        fav_set = get_favorites_set(current_user)
+        for i in range(len(listings)):
+            listings[i] = format_joined_listing(listings[i], wilayats_map, fav_set)
 
     return listings
 
@@ -362,7 +380,7 @@ def get_my_listings(
     user_id = current_user["id"]
     
     def query_func(table):
-        query = table.select("*").eq("user_id", user_id)
+        query = table.select("*, listing_images(*), stores(*, locations(*)), app_users(*), categories(*), locations(*), listing_promotions(*, pricing_plans(*))").eq("user_id", user_id)
         if status:
             query = query.eq("status", status)
             
@@ -372,80 +390,10 @@ def get_my_listings(
     listings = result.data if result.data else []
     
     if listings:
-        # Batch fetch images
-        listing_ids = [l["id"] for l in listings]
-        images_map = batch_listing_images(listing_ids)
-
-        # Batch fetch locations
-        location_ids = list({l["location_id"] for l in listings if l.get("location_id")})
-        locations_map = batch_locations(location_ids)
-
-        # Batch fetch stores
-        store_ids = list({l["store_id"] for l in listings if l.get("store_id")})
-        stores_map = batch_stores(store_ids)
-        
-        # Batch fetch active promotions
-        from utils.helpers import batch_listing_promotions
-        promotions_map = batch_listing_promotions(listing_ids)
-                    
-        # Batch fetch users for phone numbers
-        users_res = db.select_in("app_users", "id", [user_id])
-        users_map = {u["id"]: u for u in users_res}
-        
-        # Batch fetch favorites for current user
-        fav_set = set()
-        favs = db.select("favorites", filters={"user_id": current_user["id"]})
-        fav_set = {f["listing_id"] for f in favs}
-
-        # Batch fetch Wilayat details (cities)
-        places = list({l["place"] for l in listings if l.get("place")})
-        wilayats_map = {}
-        if places and location_ids:
-            def wilayat_query(table):
-                return table.select("*").eq("type", "city").in_("name_en", places).in_("parent_id", location_ids)
-            wilayats_res = db.query("locations", wilayat_query)
-            if wilayats_res.data:
-                for w in wilayats_res.data:
-                    wilayats_map[(w["name_en"], w["parent_id"])] = w
-
-        for listing in listings:
-            listing["images"] = images_map.get(listing["id"], [])
-            listing["promotions"] = promotions_map.get(listing["id"], [])
-            listing["is_favorite"] = listing["id"] in fav_set
-            
-            if listing.get("location_id"):
-                loc = locations_map.get(listing["location_id"])
-                if loc:
-                    listing["location_details"] = loc
-                    listing["location_name_en"] = loc.get("name_en")
-                    listing["location_name_ar"] = loc.get("name_ar")
-            
-            # Inject Wilayat details
-            if listing.get("place") and listing.get("location_id"):
-                wilayat = wilayats_map.get((listing["place"], listing["location_id"]))
-                if wilayat:
-                    listing["place_name_en"] = wilayat.get("name_en")
-                    listing["place_name_ar"] = wilayat.get("name_ar")
-            
-            seller_phone = None
-            if listing.get("store_id"):
-                store = stores_map.get(listing["store_id"])
-                if store:
-                    listing["seller_type"] = "store"
-                    listing["store_name"] = store.get("name_en") or store.get("name")
-                    listing["store_logo"] = store.get("logo")
-                    listing["store_id"] = store["id"]
-                    seller_phone = store.get("store_number")
-            
-            if listing.get("user_id"):
-                user = users_map.get(listing["user_id"])
-                if user:
-                    listing["user_name"] = user.get("name")
-                    listing["user_profile_picture"] = user.get("profile_picture")
-                    if not seller_phone:
-                        seller_phone = user.get("phone_number")
-                    
-            listing["seller_phone_number"] = seller_phone
+        wilayats_map = get_wilayats_map(listings)
+        fav_set = get_favorites_set(current_user)
+        for i in range(len(listings)):
+            listings[i] = format_joined_listing(listings[i], wilayats_map, fav_set)
 
     return listings
 
@@ -464,7 +412,7 @@ def get_user_listings(
         from datetime import datetime
         now_str = datetime.utcnow().isoformat()
         
-        query = table.select("*").eq("user_id", user_id).eq("status", "active")
+        query = table.select("*, listing_images(*), stores(*, locations(*)), app_users(*), categories(*), locations(*), listing_promotions(*, pricing_plans(*))").eq("user_id", user_id).eq("status", "active")
         query = query.or_(f"expires_at.gte.{now_str},expires_at.is.null")
         return query.range(skip, skip + limit - 1).order("created_at", desc=True)
 
@@ -472,61 +420,10 @@ def get_user_listings(
     listings = result.data if result.data else []
     
     if listings:
-        listing_ids = [l["id"] for l in listings]
-        images_map = batch_listing_images(listing_ids)
-        
-        from utils.helpers import batch_listing_promotions
-        promotions_map = batch_listing_promotions(listing_ids)
-
-        location_ids = list({l["location_id"] for l in listings if l.get("location_id")})
-        locations_map = batch_locations(location_ids)
-
-        users_res = db.select_one("app_users", user_id)
-        seller_phone = users_res.get("phone_number") if users_res else None
-        
-        # Batch fetch favorites if user logged in
-        fav_set = set()
-        if current_user:
-            favs = db.select("favorites", filters={"user_id": current_user["id"]})
-            fav_set = {f["listing_id"] for f in favs}
-
-        # Batch fetch Wilayat details (cities)
-        places = list({l["place"] for l in listings if l.get("place")})
-        wilayats_map = {}
-        if places and location_ids:
-            def wilayat_query(table):
-                return table.select("*").eq("type", "city").in_("name_en", places).in_("parent_id", location_ids)
-            wilayats_res = db.query("locations", wilayat_query)
-            if wilayats_res.data:
-                for w in wilayats_res.data:
-                    wilayats_map[(w["name_en"], w["parent_id"])] = w
-        
-        for listing in listings:
-            listing["images"] = images_map.get(listing["id"], [])
-            listing["promotions"] = promotions_map.get(listing["id"], [])
-            listing["is_favorite"] = listing["id"] in fav_set
-            
-            if listing.get("location_id"):
-                loc = locations_map.get(listing["location_id"])
-                if loc:
-                    listing["location_details"] = loc
-                    listing["location_name_en"] = loc.get("name_en")
-                    listing["location_name_ar"] = loc.get("name_ar")
-            
-            # Inject Wilayat details
-            if listing.get("place") and listing.get("location_id"):
-                wilayat = wilayats_map.get((listing["place"], listing["location_id"]))
-                if wilayat:
-                    listing["place_name_en"] = wilayat.get("name_en")
-                    listing["place_name_ar"] = wilayat.get("name_ar")
-            
-            listing["seller_type"] = "individual"
-            if users_res:
-                listing["user_name"] = users_res.get("name")
-                listing["user_profile_picture"] = users_res.get("profile_picture")
-                if not seller_phone:
-                     seller_phone = users_res.get("phone_number")
-            listing["seller_phone_number"] = seller_phone
+        wilayats_map = get_wilayats_map(listings)
+        fav_set = get_favorites_set(current_user)
+        for i in range(len(listings)):
+            listings[i] = format_joined_listing(listings[i], wilayats_map, fav_set)
 
     return listings
 
@@ -716,7 +613,7 @@ def list_all_listings_admin(
     Used for approval management in admin panel.
     """
     def query_func(table):
-        query = table.select("*")
+        query = table.select("*, listing_images(*), stores(*, locations(*)), app_users(*), categories(*), locations(*), listing_promotions(*, pricing_plans(*))")
         
         if status:
             query = query.eq("status", status)
@@ -728,102 +625,11 @@ def list_all_listings_admin(
     
     # Batch fetch images — 1 query instead of N
     if listings:
-        listing_ids = [l["id"] for l in listings]
-        from utils.helpers import batch_listing_images, batch_stores, batch_categories, batch_locations
-        
-        images_map = batch_listing_images(listing_ids)
-        
-        # Batch fetch stores
-        store_ids = list({l["store_id"] for l in listings if l.get("store_id")})
-        stores_map = batch_stores(store_ids)
-        
-        # Batch fetch users for phone numbers
-        user_ids = list({l["user_id"] for l in listings if l.get("user_id")})
-        users_res = db.select_in("app_users", "id", user_ids) if user_ids else []
-        users_map = {u["id"]: u for u in users_res}
-        
-        # Batch fetch categories
-        category_ids = list({l["category_id"] for l in listings if l.get("category_id")})
-        categories_map = batch_categories(category_ids)
-        
-        # Batch fetch parent categories if needed
-        parent_category_ids = list({c.get("parent_id") for c in categories_map.values() if c.get("parent_id")})
-        parent_categories_map = batch_categories(parent_category_ids) if parent_category_ids else {}
-        
-        # Batch fetch locations
-        location_ids = list({l["location_id"] for l in listings if l.get("location_id")})
-        locations_map = batch_locations(location_ids)
-        
-        # Batch fetch active promotions
-        from utils.helpers import batch_listing_promotions
-        promotions_map = batch_listing_promotions(listing_ids)
+        wilayats_map = get_wilayats_map(listings)
+        fav_set = get_favorites_set(current_user)
+        for i in range(len(listings)):
+            listings[i] = format_joined_listing(listings[i], wilayats_map, fav_set)
 
-        # Batch fetch Wilayat details (cities)
-        places = list({l["place"] for l in listings if l.get("place")})
-        wilayats_map = {}
-        if places and location_ids:
-            def wilayat_query(table):
-                return table.select("*").eq("type", "city").in_("name_en", places).in_("parent_id", location_ids)
-            wilayats_res = db.query("locations", wilayat_query)
-            if wilayats_res.data:
-                for w in wilayats_res.data:
-                    wilayats_map[(w["name_en"], w["parent_id"])] = w
-
-        for listing in listings:
-            listing["images"] = images_map.get(listing["id"], [])
-            listing["promotions"] = promotions_map.get(listing["id"], [])
-            
-            seller_phone = None
-            if listing.get("store_id"):
-                store = stores_map.get(listing["store_id"])
-                if store:
-                    listing["seller_type"] = "store"
-                    listing["store_name"] = store.get("name_en") or store.get("name")
-                    listing["store_logo"] = store.get("logo")
-                    listing["store_id"] = store["id"]
-                    seller_phone = store.get("store_number")
-            
-            if listing.get("user_id"):
-                user = users_map.get(listing["user_id"])
-                if user:
-                    listing["user_name"] = user.get("name")
-                    listing["user_profile_picture"] = user.get("profile_picture")
-                    if not seller_phone:
-                        seller_phone = user.get("phone_number")
-                    
-            listing["seller_phone_number"] = seller_phone
-            
-            # Categories
-            cat = categories_map.get(listing.get("category_id"))
-            if cat:
-                listing["category_name_en"] = cat.get("name_en")
-                listing["category_name_ar"] = cat.get("name_ar")
-                
-                parent_id = cat.get("parent_id")
-                if parent_id:
-                    parent_cat = parent_categories_map.get(parent_id)
-                    if parent_cat:
-                        listing["parent_category_name_en"] = parent_cat.get("name_en")
-                        listing["parent_category_name_ar"] = parent_cat.get("name_ar")
-
-            location_details = {}
-            
-            # Locations
-            if listing.get("location_id"):
-                loc = locations_map.get(listing["location_id"])
-                if loc:
-                    location_details["governorate_name_en"] = loc.get("name_en")
-                    location_details["governorate_name_ar"] = loc.get("name_ar")
-            
-            # Wilayat details
-            if listing.get("place") and listing.get("location_id"):
-                wilayat = wilayats_map.get((listing["place"], listing["location_id"]))
-                if wilayat:
-                    location_details["wilayat_name_en"] = wilayat.get("name_en")
-                    location_details["wilayat_name_ar"] = wilayat.get("name_ar")
-            
-            listing["location_details"] = location_details if location_details else None
-    
     return listings
 
 

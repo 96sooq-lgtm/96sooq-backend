@@ -7,7 +7,7 @@ from typing import Optional, List
 from db.supabase_client import db
 from utils.auth import get_optional_current_customer
 from utils.geo import resolve_location, get_wilayat_names_in_governorate, get_wilayats_for_governorates
-from utils.helpers import batch_listing_images, batch_locations, get_viewable_image_url, batch_stores
+from utils.helpers import batch_listing_images, batch_locations, get_viewable_image_url, batch_stores, format_joined_listing, get_wilayats_map, get_favorites_set
 from utils.logger import get_logger
 import math
 import random
@@ -127,7 +127,7 @@ def _fetch_organic_listings(
     fetch_limit = limit + len(exclude_set) + 10
 
     def query_func(table):
-        query = table.select("*").eq("status", "active")
+        query = table.select("*, listing_images(*), stores(*, locations(*)), app_users(*), categories(*), locations(*), listing_promotions(*, pricing_plans(*))").eq("status", "active")
         if place_names:
             query = query.in_("place", place_names)
         elif location_ids:

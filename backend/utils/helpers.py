@@ -177,3 +177,109 @@ def batch_listing_promotions(listing_ids: List[str]) -> Dict[str, List[Dict]]:
                 
     return promotions_map
 
+
+def get_wilayats_map(listings: list) -> dict:
+    from db.supabase_client import db
+    places = list({l.get("place") for l in listings if l.get("place")})
+    location_ids = list({l.get("location_id") for l in listings if l.get("location_id")})
+    wilayats_map = {}
+    if places and location_ids:
+        def wilayat_query(table):
+            return table.select("*").eq("type", "city").in_("name_en", places).in_("parent_id", location_ids)
+        wilayats_res = db.query("locations", wilayat_query)
+        if wilayats_res.data:
+            for w in wilayats_res.data:
+                wilayats_map[(w.get("name_en"), w.get("parent_id"))] = w
+    return wilayats_map
+
+def get_favorites_set(current_user: dict | None) -> set:
+    from db.supabase_client import db
+    fav_set = set()
+    if current_user:
+        favs = db.select("favorites", filters={"user_id": current_user["id"]})
+        fav_set = {f["listing_id"] for f in favs}
+    return fav_set
+
+def format_joined_listing(listing: dict, wilayats_map: dict, fav_set: set) -> dict:
+    from datetime import datetime
+    now_str = datetime.utcnow().isoformat()
+    # get_viewable_image_url is already in this file, we can just call it locally
+    
+    # Categories
+    cat = listing.get("categories")
+    if isinstance(cat, dict):
+        listing["category_name_en"] = cat.get("name_en")
+        listing["category_name_ar"] = cat.get("name_ar")
+        
+    # Images
+    imgs = listing.get("listing_images") or []
+    sorted_imgs = sorted(imgs, key=lambda x: (not x.get("is_main", False), x.get("display_order", 0)))
+    listing["images"] = [get_viewable_image_url(img.get("image_url")) for img in sorted_imgs]
+    listing.pop("listing_images", None)
+    
+    # Promotions
+    promos = []
+    for promo in listing.get("listing_promotions") or []:
+        if promo.get("status") == "active" and (promo.get("end_date") or "") >= now_str:
+            plan = promo.get("pricing_plans")
+            if plan and plan.get("type") == "ad":
+                promos.append({
+                    "id": promo.get("id"),
+                    "name_en": plan.get("name_en"),
+                    "name_ar": plan.get("name_ar"),
+                    "plan_id": promo.get("plan_id"),
+                    "start_date": promo.get("start_date"),
+                    "end_date": promo.get("end_date")
+                })
+    listing["promotions"] = promos
+    listing.pop("listing_promotions", None)
+    
+    # Favorites
+    listing["is_favorite"] = listing.get("id") in fav_set
+
+    # Locations
+    loc = listing.get("locations")
+    if isinstance(loc, dict):
+        listing["location_details"] = loc
+        listing["location_name_en"] = loc.get("name_en")
+        listing["location_name_ar"] = loc.get("name_ar")
+    listing.pop("locations", None)
+
+    # Wilayats
+    if listing.get("place") and listing.get("location_id"):
+        wilayat = wilayats_map.get((listing.get("place"), listing.get("location_id")))
+        if wilayat:
+            listing["place_name_en"] = wilayat.get("name_en")
+            listing["place_name_ar"] = wilayat.get("name_ar")
+            listing["wilayat_id"] = wilayat.get("id")
+            listing["wilayat_name_en"] = wilayat.get("name_en")
+            listing["wilayat_name_ar"] = wilayat.get("name_ar")
+
+    # Store / Seller
+    seller_phone = None
+    store = listing.get("stores")
+    listing["seller_type"] = "individual"
+    if isinstance(store, dict):
+        listing["seller_type"] = "store"
+        listing["store_name"] = store.get("name_en") or store.get("name")
+        listing["store_logo"] = store.get("logo")
+        listing["store_id"] = store.get("id")
+        seller_phone = store.get("store_number")
+        if not listing.get("location_name_en") and store.get("locations"):
+            s_loc = store.get("locations")
+            if isinstance(s_loc, dict):
+                listing["location_name_en"] = s_loc.get("name_en")
+                listing["location_name_ar"] = s_loc.get("name_ar")
+    listing.pop("stores", None)
+    
+    user = listing.get("app_users")
+    if isinstance(user, dict):
+        listing["user_name"] = user.get("name")
+        listing["user_profile_picture"] = user.get("profile_picture")
+        if not seller_phone:
+            seller_phone = user.get("phone_number")
+    listing.pop("app_users", None)
+
+    listing["seller_phone_number"] = seller_phone
+
+    return listing
