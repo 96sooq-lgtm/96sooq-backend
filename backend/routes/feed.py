@@ -269,9 +269,8 @@ def get_feed(
                 except Exception:
                     pass  # Non-critical, don't fail the feed
 
-            for listing in promoted_listings:
-                listing["is_promoted"] = True
-
+            # slot placement no longer auto-sets is_promoted.
+            # is_promoted will be derived strictly from the promotions array in the enrichment step.
             promoted_ids = [l["id"] for l in promoted_listings]
 
     # 3. Fetch organic listings with expanding radius
@@ -320,9 +319,7 @@ def get_feed(
             limit=organic_limit,
         )
 
-    # Mark organic listings
-    for listing in organic_listings:
-        listing["is_promoted"] = False
+    # is_promoted will be derived strictly from the promotions array in the enrichment step.
 
     # 4. Combine: promoted first, then organic
     all_listings = promoted_listings + organic_listings
@@ -401,8 +398,8 @@ def get_feed(
         promotions_map = batch_listing_promotions(listing_ids)
         for listing in all_listings:
             listing["promotions"] = promotions_map.get(listing["id"], [])
-            # Also set is_promoted if it's already true (from top slot) or has a product_listing promotion
-            listing["is_promoted"] = listing.get("is_promoted", False) or len(listing["promotions"]) > 0
+            # is_promoted is true ONLY if there is at least one active 'product_listing' promotion
+            listing["is_promoted"] = len(listing["promotions"]) > 0
 
     # 6. Pagination math
     total = total_organic + (len(promoted_listings) if page == 0 else 0)
@@ -848,8 +845,8 @@ def get_category_feed(
             
             promoted_listings = [p for p in all_promoted if p["id"] in selected_ids]
             
-            for listing in promoted_listings:
-                listing["is_promoted"] = True
+            # slot placement no longer auto-sets is_promoted.
+            # is_promoted will be derived strictly from the promotions array in the enrichment step.
             
             # Prepare organic limits to account for promoted slots
             organic_limit = limit - len(promoted_listings)
@@ -916,8 +913,7 @@ def get_category_feed(
             limit=organic_limit,
         )
 
-    for listing in organic_listings:
-        listing["is_promoted"] = False
+    # is_promoted will be derived strictly from the promotions array in the enrichment step.
 
     # 5. Combine and enrich
     all_listings = promoted_listings + organic_listings
@@ -994,8 +990,8 @@ def get_category_feed(
         promotions_map = batch_listing_promotions(listing_ids)
         for l in all_listings:
             l["promotions"] = promotions_map.get(l["id"], [])
-            # Also set is_promoted if it's already true (from top slot) or has a product_listing promotion
-            l["is_promoted"] = l.get("is_promoted", False) or len(l["promotions"]) > 0
+            # is_promoted is true ONLY if there is at least one active 'product_listing' promotion
+            l["is_promoted"] = len(l["promotions"]) > 0
     total = total_organic + (len(promoted_listings) if page == 0 else 0)
     pages = math.ceil(total / limit) if total > 0 else 0
 
