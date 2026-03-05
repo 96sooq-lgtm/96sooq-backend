@@ -421,7 +421,7 @@ def get_location_offers(
 ):
     """
     Location-based offers feed.
-    Returns active offer-type banners relevant to user's location.
+    Returns active offer-type banners and user boosted top-offers.
     Offers with no location (admin-created global) are always included.
     """
     loc = resolve_location_by_name(governorate_name=governorate, wilayat_name=wilayat)
@@ -432,9 +432,9 @@ def get_location_offers(
 
     def query_func(table):
         query = (
-            table.select("*")
+            table.select("*, listings(*, categories(*), locations(*))")
             .eq("status", "active")
-            .eq("type", "offers")
+            .in_("type", ["offers", "top_offers"])
         )
 
         # Location: match wilayat, governorate, or global (no location set)
@@ -457,7 +457,7 @@ def get_location_offers(
         query = (
             table.select("id", count="exact")
             .eq("status", "active")
-            .eq("type", "offers")
+            .in_("type", ["offers", "top_offers"])
         )
         if wilayat_name and gov_id:
             query = query.or_(
@@ -477,6 +477,10 @@ def get_location_offers(
 
     result = db.query("ad_banners", query_func)
     offers = result.data if result.data else []
+
+    # Add key to distinguish admin offers from user boosts
+    for offer in offers:
+        offer["is_admin_offer"] = offer.get("type") == "offers"
 
     pages = math.ceil(total / limit) if total > 0 else 0
 

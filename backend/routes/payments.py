@@ -119,7 +119,8 @@ async def activate_bundle(payment_id: str, metadata: dict, user_id: str):
         if ad_plan_id:
             ad_duration_days = metadata.get("ad_duration_days", 1)
             now = datetime.utcnow()
-            ad_end_date = (now + timedelta(days=ad_duration_days)).isoformat()
+            ad_end_date_dt = now + timedelta(days=ad_duration_days)
+            ad_end_date = ad_end_date_dt.isoformat()
 
             # Check if an active promotion for this plan+listing already exists
             def promo_query(table):
@@ -141,9 +142,10 @@ async def activate_bundle(payment_id: str, metadata: dict, user_id: str):
                     current_end = _dt.fromisoformat(existing_promo["end_date"].replace("Z", "+00:00")).replace(tzinfo=None)
                 except Exception:
                     current_end = now
-                extended_end = (current_end + timedelta(days=ad_duration_days)).isoformat()
-                db.update("listing_promotions", existing_promo["id"], {"end_date": extended_end})
-                logger.info(f"Ad boost {ad_plan_id} extended for listing {listing_id} to {extended_end}")
+                ad_end_date_dt = current_end + timedelta(days=ad_duration_days)
+                ad_end_date = ad_end_date_dt.isoformat()
+                db.update("listing_promotions", existing_promo["id"], {"end_date": ad_end_date})
+                logger.info(f"Ad boost {ad_plan_id} extended for listing {listing_id} to {ad_end_date}")
             else:
                 promo_data = {
                     "listing_id": listing_id,
@@ -155,6 +157,37 @@ async def activate_bundle(payment_id: str, metadata: dict, user_id: str):
                 db.insert("listing_promotions", promo_data)
                 logger.info(f"Ad boost {ad_plan_id} activated for listing {listing_id} for {ad_duration_days} days")
 
+            # 3. Synchronize with ad_banners for the Banner/Offers feed
+            plan = db.select_one("pricing_plans", ad_plan_id)
+            if plan and plan.get("type") == "ad" and plan.get("ad_sub_type") in ["offers", "product_listing"]:
+                listing = db.select_one("listings", listing_id)
+                if listing:
+                    banner_type = "top_offers" if plan["ad_sub_type"] == "offers" else "product_listing"
+                    
+                    # Update or Insert banner
+                    existing_banners = db.select("ad_banners", filters={"listing_id": listing_id, "type": banner_type})
+                    
+                    images = listing.get("images") or []
+                    image_url = images[0] if images else ""
+                    
+                    banner_data = {
+                        "user_id": payment["user_id"],
+                        "listing_id": listing_id,
+                        "type": banner_type,
+                        "name": listing.get("title", "Boosted Listing"),
+                        "image_url": image_url,
+                        "status": "active",
+                        "expires_at": ad_end_date,
+                        "governorate_id": listing.get("location_id"),
+                        "wilayat": listing.get("place"),
+                        "plan_id": ad_plan_id
+                    }
+                    
+                    if existing_banners:
+                        db.update("ad_banners", existing_banners[0]["id"], banner_data)
+                    else:
+                        db.insert("ad_banners", banner_data)
+                    logger.info(f"Banner synced for listing {listing_id} (type={banner_type}, expires={ad_end_date})")
 
         # Update payment status
         db.update("payments", payment_id, {"status": "success"})
