@@ -206,12 +206,6 @@ def format_joined_listing(listing: dict, wilayats_map: dict, fav_set: set) -> di
     now_str = datetime.utcnow().isoformat()
     # get_viewable_image_url is already in this file, we can just call it locally
     
-    # Categories
-    cat = listing.get("categories")
-    if isinstance(cat, dict):
-        listing["category_name_en"] = cat.get("name_en")
-        listing["category_name_ar"] = cat.get("name_ar")
-        
     # Images
     imgs = listing.get("listing_images") or []
     sorted_imgs = sorted(imgs, key=lambda x: (not x.get("is_main", False), x.get("display_order", 0)))
@@ -245,7 +239,6 @@ def format_joined_listing(listing: dict, wilayats_map: dict, fav_set: set) -> di
     # Locations
     loc = listing.get("locations")
     if isinstance(loc, dict):
-        listing["location_details"] = loc
         listing["location_name_en"] = loc.get("name_en")
         listing["location_name_ar"] = loc.get("name_ar")
     listing.pop("locations", None)
@@ -256,9 +249,6 @@ def format_joined_listing(listing: dict, wilayats_map: dict, fav_set: set) -> di
         if wilayat:
             listing["place_name_en"] = wilayat.get("name_en")
             listing["place_name_ar"] = wilayat.get("name_ar")
-            listing["wilayat_id"] = wilayat.get("id")
-            listing["wilayat_name_en"] = wilayat.get("name_en")
-            listing["wilayat_name_ar"] = wilayat.get("name_ar")
 
     # Store / Seller
     seller_phone = None

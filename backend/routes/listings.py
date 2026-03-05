@@ -292,9 +292,6 @@ def create_listing(
         if city:
             listing["place_name_en"] = city.get("name_en")
             listing["place_name_ar"] = city.get("name_ar")
-            listing["wilayat_id"] = city.get("id")
-            listing["wilayat_name_en"] = city.get("name_en")
-            listing["wilayat_name_ar"] = city.get("name_ar")
     
     # 7. Handle Images — batch insert in one query
     if payload.images:
@@ -448,40 +445,14 @@ def get_listing(listing_id: str, current_user: Optional[dict] = Depends(get_opti
     images_map = batch_listing_images([listing_id])
     listing["images"] = images_map.get(listing_id, [])
     
-    # 2. Fetch Category details
-    if listing.get("category_id"):
-        cat = db.select_one("categories", listing["category_id"])
-        if cat:
-            listing["category_name_en"] = cat.get("name_en")
-            listing["category_name_ar"] = cat.get("name_ar")
-            
-            parent_id = cat.get("parent_id")
-            if parent_id:
-                parent_cat = db.select_one("categories", parent_id)
-                if parent_cat:
-                    listing["parent_category_name_en"] = parent_cat.get("name_en")
-                    listing["parent_category_name_ar"] = parent_cat.get("name_ar")
+    # 2. Category details removed to match ListingOut
     
     # 3. Fetch Location details
     if listing.get("location_id"):
         loc = db.select_one("locations", listing["location_id"])
         if loc:
-             listing["location_details"] = loc
              listing["location_name_en"] = loc.get("name_en")
              listing["location_name_ar"] = loc.get("name_ar")
-             
-             # Fetch Wilayat details if place name exists
-             if listing.get("place"):
-                 def wilayat_query(table):
-                     return table.select("*").eq("type", "city").eq("name_en", listing["place"]).eq("parent_id", listing["location_id"])
-                 wilayats_res = db.query("locations", wilayat_query)
-                 if wilayats_res.data:
-                      wilayat = wilayats_res.data[0]
-                      listing["place_name_en"] = wilayat.get("name_en")
-                      listing["place_name_ar"] = wilayat.get("name_ar")
-                      listing["wilayat_id"] = wilayat.get("id")
-                      listing["wilayat_name_en"] = wilayat.get("name_en")
-                      listing["wilayat_name_ar"] = wilayat.get("name_ar")
              
     # 4. Fetch Store / Seller details
     seller_phone = None
