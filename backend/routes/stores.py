@@ -119,8 +119,11 @@ def list_stores(
     my_stores: bool = Query(False, description="If true, return only the authenticated user's stores (requires Bearer token)"),
     status: Optional[str] = Query(None, description="Filter by status — only applies when fetching own stores"),
     location_id: Optional[str] = Query(None, description="Filter by governorate or wilayat UUID. If null, returns all stores."),
+    governorate: Optional[str] = Query(None, description="Governorate name (en or ar) — alternative to location_id"),
+    wilayat_name: Optional[str] = Query(None, alias="wilayat", description="Wilayat name (en or ar) — alternative to location_id"),
     user_id: Optional[str] = Query(None, description="If 'current', return the authenticated user's stores (all statuses)."),
-    min_rating: Optional[float] = Query(None, description="Minimum average rating")
+    min_rating: Optional[float] = Query(None, description="Minimum average rating"),
+    search: Optional[str] = Query(None, description="Search by store name (English or Arabic, partial match)")
 ):
     """
     List stores.
@@ -152,6 +155,14 @@ def list_stores(
             governorate_filter = location_id          # filter by UUID column
         elif location.get("type") in ("city", "district"):
             wilayat_filter = location.get("name_en")  # filter by text name column
+    elif governorate or wilayat_name:
+        # Name-based location resolution (consistent with feed endpoints)
+        from utils.geo import resolve_location_by_name
+        loc = resolve_location_by_name(governorate_name=governorate, wilayat_name=wilayat_name)
+        if loc.get("wilayat_name"):
+            wilayat_filter = loc["wilayat_name"]
+        elif loc.get("gov_id"):
+            governorate_filter = loc["gov_id"]
 
     def query_func(table):
         query = table.select("id, name, name_ar, status, logo")
@@ -166,6 +177,8 @@ def list_stores(
             query = query.eq("governorate_id", governorate_filter)
         if wilayat_filter:
             query = query.eq("wilayat", wilayat_filter)
+        if search:
+            query = query.or_(f"name.ilike.%{search}%,name_ar.ilike.%{search}%")
 
         if min_rating is None:
             query = query.range(skip, skip + limit - 1)

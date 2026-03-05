@@ -1005,3 +1005,229 @@ def get_category_feed(
     }
 
 
+@router.get("/chat-screen-ads")
+def get_chat_screen_ads(
+    governorate: Optional[str] = Query(None, description="Governorate name (en or ar)"),
+    wilayat: Optional[str] = Query(None, description="Wilayat name (en or ar)"),
+    page: int = Query(0, ge=0),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=50),
+):
+    """
+    Chat screen ads — listings with active 'chat_screen' promotions.
+    Used by the frontend to show sponsored listings inside the chat screen.
+    Location-aware with expanding radius: wilayat → governorate → all.
+    """
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # 1. Find all active chat_screen promotions (non-expired)
+    def promo_query(table):
+        return (
+            table.select("listing_id, plan_id, start_date, end_date")
+            .eq("status", "active")
+            .gte("end_date", now_iso)
+        )
+
+    promo_result = db.query("listing_promotions", promo_query)
+    all_promos = promo_result.data if promo_result.data else []
+
+    if not all_promos:
+        return {
+            "ads": [],
+            "resolved_location": {
+                "wilayat_en": None,
+                "governorate_en": None,
+                "expansion_level": "all",
+            },
+            "total": 0,
+            "page": page,
+            "limit": limit,
+            "pages": 0,
+        }
+
+    # 2. Filter: only promotions whose plan is ad_sub_type=chat_screen
+    plan_ids = list({p["plan_id"] for p in all_promos if p.get("plan_id")})
+    plans_res = db.select_in("pricing_plans", "id", plan_ids) if plan_ids else []
+    chat_screen_plan_ids = {
+        p["id"] for p in plans_res
+        if p.get("type") == "ad" and p.get("ad_sub_type") == "chat_screen"
+    }
+
+    chat_promos = [p for p in all_promos if p.get("plan_id") in chat_screen_plan_ids]
+
+    if not chat_promos:
+        return {
+            "ads": [],
+            "resolved_location": {
+                "wilayat_en": None,
+                "governorate_en": None,
+                "expansion_level": "all",
+            },
+            "total": 0,
+            "page": page,
+            "limit": limit,
+            "pages": 0,
+        }
+
+    listing_ids = list({p["listing_id"] for p in chat_promos if p.get("listing_id")})
+
+    # 3. Fetch all those listings (only active, non-expired)
+    def listing_query(table):
+        return (
+            table.select(
+                "*, listing_images(*), stores(*, locations(*)), "
+                "app_users!inner(id, name, profile_picture, phone_number, is_active), "
+                "categories(*), locations(*)"
+            )
+            .in_("id", listing_ids)
+            .eq("status", "active")
+            .eq("app_users.is_active", True)
+            .or_(f"expires_at.is.null,expires_at.gt.{now_iso}")
+        )
+
+    listing_result = db.query("listings", listing_query)
+    all_listings = listing_result.data if listing_result.data else []
+
+    # 4. Location filtering with expanding radius
+    resolved_wilayat_name = None
+    gov_id = None
+    gov_name_en = None
+    expansion_level = "all"
+
+    if governorate or wilayat:
+        loc = resolve_location_by_name(governorate_name=governorate, wilayat_name=wilayat)
+        resolved_wilayat_name = loc["wilayat_name"]
+        gov_id = loc["gov_id"]
+        gov_name_en = loc["gov_name_en"]
+
+        # Level 1: Filter by wilayat
+        if resolved_wilayat_name:
+            expansion_level = "wilayat"
+            filtered = [l for l in all_listings if l.get("place") == resolved_wilayat_name]
+
+            # Level 2: Expand to governorate
+            if len(filtered) < 3 and gov_id:
+                expansion_level = "governorate"
+                gov_wilayats = get_wilayat_names_in_governorate(gov_id)
+                filtered = [l for l in all_listings if l.get("place") in (gov_wilayats or [])]
+
+            # Level 3: All (no filter)
+            if len(filtered) < 3:
+                expansion_level = "all"
+                filtered = all_listings
+
+            all_listings = filtered
+        elif gov_id:
+            expansion_level = "governorate"
+            gov_wilayats = get_wilayat_names_in_governorate(gov_id)
+            filtered = [l for l in all_listings if l.get("place") in (gov_wilayats or [])]
+            if len(filtered) < 3:
+                expansion_level = "all"
+                filtered = all_listings
+            all_listings = filtered
+
+    # 5. Pagination
+    total = len(all_listings)
+    actual_skip = skip if skip > 0 else page * limit
+    paginated = all_listings[actual_skip : actual_skip + limit]
+
+    # 6. Enrich
+    # Build promotion lookup for enrichment
+    promo_lookup = {}
+    plans_map = {p["id"]: p for p in plans_res}
+    for p in chat_promos:
+        lid = p.get("listing_id")
+        plan = plans_map.get(p.get("plan_id"), {})
+        if lid not in promo_lookup:
+            promo_lookup[lid] = {
+                "plan_name_en": plan.get("name_en"),
+                "plan_name_ar": plan.get("name_ar"),
+                "start_date": p.get("start_date"),
+                "end_date": p.get("end_date"),
+            }
+
+    if paginated:
+        l_ids = [l["id"] for l in paginated]
+        images_map = batch_listing_images(l_ids)
+
+        loc_ids = list({l["location_id"] for l in paginated if l.get("location_id")})
+        locations_map = batch_locations(loc_ids)
+
+        # Wilayat details
+        places = list({l["place"] for l in paginated if l.get("place")})
+        wilayats_map = {}
+        if places and loc_ids:
+            def wil_query(table):
+                return table.select("*").eq("type", "city").in_("name_en", places).in_("parent_id", loc_ids)
+            wil_res = db.query("locations", wil_query)
+            if wil_res.data:
+                for w in wil_res.data:
+                    wilayats_map[(w["name_en"], w["parent_id"])] = w
+
+        for listing in paginated:
+            # Images
+            imgs = listing.get("listing_images") or []
+            sorted_imgs = sorted(imgs, key=lambda x: (not x.get("is_main", False), x.get("display_order", 0)))
+            listing["images"] = [get_viewable_image_url(img.get("image_url")) for img in sorted_imgs]
+            listing.pop("listing_images", None)
+
+            # Categories
+            cat = listing.get("categories")
+            if isinstance(cat, dict):
+                listing["category_name_en"] = cat.get("name_en")
+                listing["category_name_ar"] = cat.get("name_ar")
+            listing.pop("categories", None)
+
+            # Location
+            loc_obj = listing.get("locations")
+            if isinstance(loc_obj, dict):
+                listing["location_name_en"] = loc_obj.get("name_en")
+                listing["location_name_ar"] = loc_obj.get("name_ar")
+            listing.pop("locations", None)
+
+            # Wilayat
+            if listing.get("place") and listing.get("location_id"):
+                wil = wilayats_map.get((listing["place"], listing["location_id"]))
+                if wil:
+                    listing["wilayat_name_en"] = wil.get("name_en")
+                    listing["wilayat_name_ar"] = wil.get("name_ar")
+
+            # Store / Seller
+            seller_phone = None
+            store = listing.get("stores")
+            listing["seller_type"] = "individual"
+            if isinstance(store, dict):
+                listing["seller_type"] = "store"
+                listing["store_name"] = store.get("name_en") or store.get("name")
+                listing["store_logo"] = store.get("logo")
+                listing["store_id"] = store.get("id")
+                seller_phone = store.get("store_number")
+            listing.pop("stores", None)
+
+            user = listing.get("app_users")
+            if isinstance(user, dict):
+                listing["user_name"] = user.get("name")
+                listing["user_profile_picture"] = user.get("profile_picture")
+                if not seller_phone:
+                    seller_phone = user.get("phone_number")
+            listing.pop("app_users", None)
+
+            listing["seller_phone_number"] = seller_phone
+
+            # Promotion info
+            listing["chat_screen_promotion"] = promo_lookup.get(listing["id"])
+
+    pages = math.ceil(total / limit) if total > 0 else 0
+
+    return {
+        "ads": paginated,
+        "resolved_location": {
+            "wilayat_en": resolved_wilayat_name,
+            "governorate_en": gov_name_en,
+            "expansion_level": expansion_level,
+        },
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "pages": pages,
+    }
