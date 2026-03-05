@@ -32,16 +32,19 @@ def create_store(
     current_user: dict = Depends(get_current_customer)
 ):
     """
-    Create a new store. 
-    Business Logic: First store might be free, otherwise check for plan payments (future).
-    For now, sets status to 'pending_approval' or 'active' depending on policy.
+    Create a new store.
+    Business rule: One store per user account.
     """
     user_id = current_user["id"]
-    
-    # Check if user already has a store? 
-    # Logic: "for a user first store is free if sae user wnated to create mulitple store there will be a rpice"
-    # We will just allow creation for now.
-    
+
+    # Enforce one store per user
+    existing_stores = db.select("stores", filters={"user_id": user_id})
+    if existing_stores:
+        raise HTTPException(
+            status_code=400,
+            detail=f"You already have a store (ID: {existing_stores[0]['id']}). Only one store per account is allowed."
+        )
+
     # Validate Governorate
     if payload.governorate_id:
         governorate = db.select_one("locations", str(payload.governorate_id))

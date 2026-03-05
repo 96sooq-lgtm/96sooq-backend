@@ -115,19 +115,46 @@ async def activate_bundle(payment_id: str, metadata: dict, user_id: str):
             db.update("listings", listing_id, listing_update)
             logger.info(f"Listing {listing_id} moved to pending_approval (expires_at={listing_expires_at})")
 
-        # 2. Activate Ad Boost
+        # 2. Activate Ad Boost — extend existing if same plan already active, else create
         if ad_plan_id:
             ad_duration_days = metadata.get("ad_duration_days", 1)
-            ad_end_date = (datetime.utcnow() + timedelta(days=ad_duration_days)).isoformat()
-            promo_data = {
-                "listing_id": listing_id,
-                "plan_id": ad_plan_id,
-                "start_date": datetime.utcnow().isoformat(),
-                "end_date": ad_end_date,
-                "status": "active"
-            }
-            db.insert("listing_promotions", promo_data)
-            logger.info(f"Ad boost {ad_plan_id} activated for listing {listing_id} for {ad_duration_days} days")
+            now = datetime.utcnow()
+            ad_end_date = (now + timedelta(days=ad_duration_days)).isoformat()
+
+            # Check if an active promotion for this plan+listing already exists
+            def promo_query(table):
+                return (
+                    table.select("id, end_date")
+                    .eq("listing_id", listing_id)
+                    .eq("plan_id", ad_plan_id)
+                    .eq("status", "active")
+                    .gte("end_date", now.isoformat())
+                    .limit(1)
+                )
+            promo_result = db.query("listing_promotions", promo_query)
+            existing_promo = promo_result.data[0] if promo_result.data else None
+
+            if existing_promo:
+                # Extend from the current end_date instead of creating a duplicate
+                from datetime import datetime as _dt
+                try:
+                    current_end = _dt.fromisoformat(existing_promo["end_date"].replace("Z", "+00:00")).replace(tzinfo=None)
+                except Exception:
+                    current_end = now
+                extended_end = (current_end + timedelta(days=ad_duration_days)).isoformat()
+                db.update("listing_promotions", existing_promo["id"], {"end_date": extended_end})
+                logger.info(f"Ad boost {ad_plan_id} extended for listing {listing_id} to {extended_end}")
+            else:
+                promo_data = {
+                    "listing_id": listing_id,
+                    "plan_id": ad_plan_id,
+                    "start_date": now.isoformat(),
+                    "end_date": ad_end_date,
+                    "status": "active"
+                }
+                db.insert("listing_promotions", promo_data)
+                logger.info(f"Ad boost {ad_plan_id} activated for listing {listing_id} for {ad_duration_days} days")
+
 
         # Update payment status
         db.update("payments", payment_id, {"status": "success"})
@@ -165,6 +192,26 @@ async def checkout(
     if listing.get("user_id") != user_id:
         logger.warning(f"Checkout failed: user {user_id} does not own listing {payload.listing_id}")
         raise HTTPException(status_code=403, detail="You can only checkout your own listings")
+
+    # Guard: if there is already a pending payment for this listing, return it
+    # This prevents double-charges from rapid double-taps on the Pay button
+    existing_pending = db.select("payments", filters={"user_id": user_id, "status": "pending"})
+    for ep in (existing_pending or []):
+        try:
+            ep_meta = ep.get("metadata", {})
+            if isinstance(ep_meta, str):
+                import json as _json
+                ep_meta = _json.loads(ep_meta)
+        except Exception:
+            ep_meta = {}
+        if ep_meta.get("listing_id") == payload.listing_id:
+            logger.info(f"Double-tap guard: returning existing pending payment {ep['id']} for listing {payload.listing_id}")
+            return {
+                "status": "payment_initiated",
+                "transaction_id": ep["id"],
+                "payment_url": None,  # frontend should already have URL; re-trigger via /checkout again after expiry
+                "message": "A payment for this listing is already in progress. Please complete or cancel it first.",
+            }
 
     # 2. Check Plan or Existing Quota
     total_amount = 0

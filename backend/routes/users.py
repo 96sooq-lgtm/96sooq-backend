@@ -2,11 +2,17 @@ from fastapi import APIRouter, HTTPException, Depends, Query, status
 from typing import List, Optional
 from models import schemas
 from db.supabase_client import db
-from utils.auth import get_current_admin
+from utils.auth import get_current_admin, get_current_customer
 from utils.logger import get_logger
 import math
 
 logger = get_logger(__name__)
+
+# Customer-facing router
+user_router = APIRouter(
+    prefix="/api/users",
+    tags=["users"],
+)
 
 # Admin Router to manage User app_users
 admin_router = APIRouter(
@@ -196,3 +202,82 @@ def toggle_user_status(user_id: str, is_active: bool = Query(...)):
     except Exception as e:
         logger.error(f"Error toggling user status {user_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update user status")
+
+
+@admin_router.get("/reports")
+def list_user_reports(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    status_filter: Optional[str] = Query(None, alias="status", description="pending|reviewed|dismissed"),
+    target_type: Optional[str] = Query(None, description="listing|user"),
+):
+    """Admin: View all user reports (listing + user)."""
+    skip = (page - 1) * limit
+
+    def query_func(table):
+        q = table.select("*").order("created_at", desc=True).range(skip, skip + limit - 1)
+        if status_filter:
+            q = q.eq("status", status_filter)
+        if target_type:
+            q = q.eq("target_type", target_type)
+        return q
+
+    result = db.query("user_reports", query_func)
+    reports = result.data if result.data else []
+    return {"reports": reports, "page": page, "limit": limit}
+
+
+@admin_router.put("/reports/{report_id}")
+def update_report_status(
+    report_id: str,
+    new_status: str = Query(..., description="reviewed|dismissed"),
+    admin_note: Optional[str] = Query(None),
+):
+    """Admin: Mark a report as reviewed or dismissed."""
+    if new_status not in ("reviewed", "dismissed"):
+        raise HTTPException(status_code=400, detail="status must be 'reviewed' or 'dismissed'")
+    update_payload = {"status": new_status}
+    if admin_note:
+        update_payload["admin_note"] = admin_note
+    updated = db.update("user_reports", report_id, update_payload)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Report not found")
+    return updated
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CUSTOMER-FACING ENDPOINTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+@user_router.post("/{target_user_id}/report", status_code=201)
+def report_user(
+    target_user_id: str,
+    reason: str = Query(..., min_length=5, max_length=1000),
+    current_user: dict = Depends(get_current_customer),
+):
+    """
+    Report another user for fraudulent behaviour, spam, or abuse.
+    Each reporter can only file one report per target user.
+    """
+    reporter_id = current_user["id"]
+
+    if reporter_id == target_user_id:
+        raise HTTPException(status_code=400, detail="You cannot report yourself")
+
+    target = db.select_one("app_users", target_user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    existing = db.select("user_reports", filters={"reported_by": reporter_id, "target_user_id": target_user_id})
+    if existing:
+        raise HTTPException(status_code=409, detail="You have already reported this user")
+
+    db.insert("user_reports", {
+        "reported_by": reporter_id,
+        "target_type": "user",
+        "target_user_id": target_user_id,
+        "reason": reason,
+    })
+
+    logger.warning(f"User reported: target={target_user_id}, by={reporter_id}, reason={reason}")
+    return {"success": True, "message": "Report submitted. Our team will review it."}

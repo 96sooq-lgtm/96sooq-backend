@@ -6,10 +6,20 @@ import uvicorn
 import traceback
 from config.settings import Settings
 from utils.logger import setup_logging, get_logger
+try:
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.util import get_remote_address
+    from slowapi.errors import RateLimitExceeded
+    limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
+    RATE_LIMITING_ENABLED = True
+except ImportError:
+    limiter = None
+    RATE_LIMITING_ENABLED = False
 from routes import health
 from routes.admin import router as admin_router
 from routes.auth import router as auth_router
 from routes.users import admin_router as admin_users_router
+from routes.users import user_router as users_router
 from routes.categories import admin_router as category_admin_router
 from routes.categories import user_router as category_user_router
 from routes.stores import router as stores_router
@@ -89,10 +99,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Rate limiting
+if RATE_LIMITING_ENABLED:
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    logger.info("Rate limiting enabled via slowapi")
+
 # Include routers
 app.include_router(health.router)
 app.include_router(admin_router)
 app.include_router(admin_users_router)
+app.include_router(users_router)
 app.include_router(auth_router)
 app.include_router(category_admin_router)
 app.include_router(category_user_router)

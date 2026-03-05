@@ -110,6 +110,10 @@ def initiate_chat(
     """
     buyer_id = current_user["id"]
 
+    # 0. Reject if current user is locked
+    if not current_user.get("is_active", True):
+        raise HTTPException(status_code=403, detail="Your account has been suspended")
+
     # 1. Verify listing is active
     listing = db.select_one("listings", payload.listing_id)
     if not listing:
@@ -118,6 +122,11 @@ def initiate_chat(
         raise HTTPException(status_code=400, detail="Listing is not available for chat")
 
     seller_id = listing["user_id"]
+
+    # Block chat to locked seller
+    seller = db.select_one("app_users", seller_id)
+    if seller and not seller.get("is_active", True):
+        raise HTTPException(status_code=400, detail="This seller's account is no longer active")
 
     # 2. Block self-chat
     if buyer_id == seller_id:
@@ -191,9 +200,19 @@ def get_inbox(
         uids = []
         for c in conversations:
             uids.extend([c["buyer_id"], c["seller_id"]])
-        
+
         users_map = batch_user_info(uids)
         stores_map = batch_stores_by_user(uids)
+
+        # Filter out conversations where the other participant is locked
+        active_user_ids = {uid for uid, u in users_map.items() if u.get("is_active", True)}
+
+        filtered = []
+        for conv in conversations:
+            other_id = conv["seller_id"] if conv["buyer_id"] == user_id else conv["buyer_id"]
+            if other_id in active_user_ids:
+                filtered.append(conv)
+        conversations = filtered
 
         for conv in conversations:
             conv["listing"] = listings_map.get(conv["listing_id"])

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Query, HTTPException, Depends
 from typing import Optional, List
 from db.supabase_client import db
 from utils.auth import get_optional_current_customer
-from utils.geo import resolve_location, get_wilayat_names_in_governorate, get_wilayats_for_governorates
+from utils.geo import resolve_location, resolve_location_by_name, get_wilayat_names_in_governorate, get_wilayats_for_governorates
 from utils.helpers import batch_listing_images, batch_locations, get_viewable_image_url, batch_stores, format_joined_listing, get_wilayats_map, get_favorites_set
 from utils.logger import get_logger
 import math
@@ -95,10 +95,17 @@ def _fetch_organic_listings(
     Returns (listings, total_count).
     """
     exclude_set = set(exclude_ids) if exclude_ids else set()
+    from datetime import datetime, timezone
+    now_iso = datetime.now(timezone.utc).isoformat()
 
     # Count query
     def count_func(table):
-        query = table.select("id", count="exact").eq("status", "active")
+        # Only active listings that are not expired
+        query = (
+            table.select("id", count="exact")
+            .eq("status", "active")
+            .or_(f"expires_at.is.null,expires_at.gt.{now_iso}")
+        )
         if place_names:
             query = query.in_("place", place_names)
         elif location_ids:
@@ -127,7 +134,18 @@ def _fetch_organic_listings(
     fetch_limit = limit + len(exclude_set) + 10
 
     def query_func(table):
-        query = table.select("*, listing_images(*), stores(*, locations(*)), app_users(*), categories(*), locations(*), listing_promotions(*, pricing_plans(*))").eq("status", "active")
+        # Join app_users to filter locked accounts at the DB level
+        query = (
+            table.select(
+                "*, listing_images(*), "
+                "stores(*, locations(*)), "
+                "app_users!inner(id, name, profile_picture, phone_number, is_active), "
+                "categories(*), locations(*), listing_promotions(*, pricing_plans(*))"
+            )
+            .eq("status", "active")
+            .eq("app_users.is_active", True)  # exclude locked-user listings
+            .or_(f"expires_at.is.null,expires_at.gt.{now_iso}")
+        )
         if place_names:
             query = query.in_("place", place_names)
         elif location_ids:
@@ -152,6 +170,12 @@ def _fetch_organic_listings(
     result = db.query("listings", query_func)
     listings = result.data if result.data else []
 
+    # Safety: drop any listings from locked users (belt-and-suspenders over the DB filter)
+    listings = [
+        l for l in listings
+        if l.get("app_users") is None or l.get("app_users", {}).get("is_active", True)
+    ]
+
     # Exclude promoted listings from organic results
     if exclude_set:
         listings = [l for l in listings if l["id"] not in exclude_set]
@@ -164,8 +188,8 @@ def _fetch_organic_listings(
 
 @router.get("/")
 def get_feed(
-    lat: Optional[float] = Query(None, description="User's latitude (optional)"),
-    lng: Optional[float] = Query(None, description="User's longitude (optional)"),
+    governorate: Optional[str] = Query(None, description="Governorate name (en or ar)"),
+    wilayat: Optional[str] = Query(None, description="Wilayat name (en or ar)"),
     page: int = Query(0, ge=0, description="Page number (0-based)"),
     limit: int = Query(20, ge=1, le=50, description="Items per page"),
     category_id: Optional[str] = Query(None, description="Filter by category"),
@@ -177,27 +201,21 @@ def get_feed(
 ):
     """
     Main location-aware listing feed with promoted listings.
+    Frontend passes governorate and/or wilayat name(s) — no GPS required.
 
     Algorithm:
-    1. Resolve user lat/lng → nearest wilayat
+    1. Resolve governorate/wilayat name → location DB record
     2. Fetch promoted listings for that location (3 slots)
     3. Fetch organic listings for that wilayat
-    4. If insufficient → expand to governorate → nearby governorates → all
+    4. If insufficient → expand to governorate → all Oman
     5. Mix: promoted at top + organic below
     """
-    # 1. Resolve location
-    wilayat = None
-    governorate = None
-    nearby_gov_ids = []
-    
-    if lat is not None and lng is not None:
-        location = resolve_location(lat, lng)
-        wilayat = location.get("wilayat")
-        governorate = location.get("governorate")
-        nearby_gov_ids = location.get("nearby_governorate_ids", [])
-
-    wilayat_name = wilayat["name_en"] if wilayat else None
-    gov_id = governorate["id"] if governorate else None
+    # 1. Resolve location by name
+    loc = resolve_location_by_name(governorate_name=governorate, wilayat_name=wilayat)
+    wilayat_name = loc["wilayat_name"]
+    gov_id = loc["gov_id"]
+    gov_name_en = loc["gov_name_en"]
+    gov_name_ar = loc["gov_name_ar"]
 
     expansion_level = "wilayat"
     skip_offset = page * (limit - PROMOTED_SLOTS_PER_PAGE) if page > 0 else 0
@@ -280,23 +298,7 @@ def get_feed(
                 limit=organic_limit,
             )
 
-    # Level 3: Expand to nearby governorates
-    if len(organic_listings) < MIN_RESULTS_THRESHOLD and nearby_gov_ids:
-        expansion_level = "nearby"
-        # Take the 3 nearest governorates
-        nearest_3 = nearby_gov_ids[:3]
-        wilayat_names = get_wilayats_for_governorates(nearest_3)
-        if wilayat_names:
-            organic_listings, total_organic = _fetch_organic_listings(
-                place_names=wilayat_names,
-                category_id=category_id,
-                condition=condition,
-                exclude_ids=promoted_ids,
-                skip=skip_offset,
-                limit=organic_limit,
-            )
-
-    # Level 4: All Oman (no location filter)
+    # Level 3: All Oman (no location filter) — no nearby expansion in name mode
     if len(organic_listings) < MIN_RESULTS_THRESHOLD:
         expansion_level = "all"
         organic_listings, total_organic = _fetch_organic_listings(
@@ -398,10 +400,9 @@ def get_feed(
     return {
         "listings": all_listings,
         "resolved_location": {
-            "wilayat_en": wilayat["name_en"] if wilayat else None,
-            "wilayat_ar": wilayat["name_ar"] if wilayat else None,
-            "governorate_en": governorate["name_en"] if governorate else None,
-            "governorate_ar": governorate["name_ar"] if governorate else None,
+            "wilayat_en": wilayat_name,
+            "governorate_en": gov_name_en,
+            "governorate_ar": gov_name_ar,
             "expansion_level": expansion_level,
         },
         "total": total,
@@ -413,26 +414,19 @@ def get_feed(
 
 @router.get("/offers")
 def get_location_offers(
-    lat: Optional[float] = Query(None, description="User's latitude (optional)"),
-    lng: Optional[float] = Query(None, description="User's longitude (optional)"),
+    governorate: Optional[str] = Query(None, description="Governorate name (en or ar)"),
+    wilayat: Optional[str] = Query(None, description="Wilayat name (en or ar)"),
     page: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=50),
 ):
     """
-    Location-based offers feed (status-like offers on the home page).
+    Location-based offers feed.
     Returns active offer-type banners relevant to user's location.
     Offers with no location (admin-created global) are always included.
     """
-    wilayat = None
-    governorate = None
-    
-    if lat is not None and lng is not None:
-        location = resolve_location(lat, lng)
-        wilayat = location.get("wilayat")
-        governorate = location.get("governorate")
-
-    wilayat_name = wilayat["name_en"] if wilayat else None
-    gov_id = governorate["id"] if governorate else None
+    loc = resolve_location_by_name(governorate_name=governorate, wilayat_name=wilayat)
+    wilayat_name = loc["wilayat_name"]
+    gov_id = loc["gov_id"]
 
     skip = page * limit
 
@@ -489,8 +483,8 @@ def get_location_offers(
     return {
         "offers": offers,
         "resolved_location": {
-            "wilayat_en": wilayat["name_en"] if wilayat else None,
-            "governorate_en": governorate["name_en"] if governorate else None,
+            "wilayat_en": wilayat_name,
+            "governorate_en": loc["gov_name_en"],
         },
         "total": total,
         "page": page,
@@ -501,28 +495,19 @@ def get_location_offers(
 
 @router.get("/nearby-stores")
 def get_nearby_stores(
-    lat: Optional[float] = Query(None, description="User's latitude (optional)"),
-    lng: Optional[float] = Query(None, description="User's longitude (optional)"),
+    governorate: Optional[str] = Query(None, description="Governorate name (en or ar)"),
+    wilayat: Optional[str] = Query(None, description="Wilayat name (en or ar)"),
     page: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=50),
     min_rating: Optional[float] = Query(None, description="Minimum average rating")
 ):
     """
-    Location-aware store listing.
-    Shows stores in user's wilayat/governorate with expanding radius.
+    Location-aware store listing. Shows stores in user's wilayat/governorate.
+    Frontend passes governorate/wilayat names — no GPS required.
     """
-    wilayat = None
-    governorate = None
-    nearby_gov_ids = []
-    
-    if lat is not None and lng is not None:
-        location = resolve_location(lat, lng)
-        wilayat = location.get("wilayat")
-        governorate = location.get("governorate")
-        nearby_gov_ids = location.get("nearby_governorate_ids", [])
-
-    wilayat_name = wilayat["name_en"] if wilayat else None
-    gov_id = governorate["id"] if governorate else None
+    loc = resolve_location_by_name(governorate_name=governorate, wilayat_name=wilayat)
+    wilayat_name = loc["wilayat_name"]
+    gov_id = loc["gov_id"]
     expansion_level = "wilayat"
 
     skip = page * limit
@@ -610,8 +595,8 @@ def get_nearby_stores(
     return {
         "stores": stores,
         "resolved_location": {
-            "wilayat_en": wilayat["name_en"] if wilayat else None,
-            "governorate_en": governorate["name_en"] if governorate else None,
+            "wilayat_en": wilayat_name,
+            "governorate_en": loc["gov_name_en"],
             "expansion_level": expansion_level,
         },
         "total": total,
@@ -652,8 +637,8 @@ def resolve_user_location(
 @router.get("/category/{category_id}")
 def get_category_feed(
     category_id: str,
-    lat: Optional[float] = Query(None, description="User's latitude (optional)"),
-    lng: Optional[float] = Query(None, description="User's longitude (optional)"),
+    governorate: Optional[str] = Query(None, description="Governorate name (en or ar)"),
+    wilayat: Optional[str] = Query(None, description="Wilayat name (en or ar)"),
     page: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=50),
     condition: Optional[str] = Query(None, description="Filter: 'new' or 'used'"),
@@ -694,12 +679,11 @@ def get_category_feed(
     
     target_category_ids = [category_id] + get_descendants(category_id, all_active)
 
-    # 3. Resolve location (if provided)
-    wilayat_name = None
+    # 3. Resolve location by name (if provided)
+    resolved_wilayat_name = None
     gov_id = None
-    nearby_gov_ids = []
     expansion_level = "all"
-    
+
     resolved_location_data = {
         "wilayat_en": None,
         "wilayat_ar": None,
@@ -707,22 +691,17 @@ def get_category_feed(
         "governorate_ar": None,
         "expansion_level": "all",
     }
-    
-    if lat is not None and lng is not None:
-        location = resolve_location(lat, lng)
-        wilayat = location.get("wilayat")
-        governorate = location.get("governorate")
-        nearby_gov_ids = location.get("nearby_governorate_ids", [])
 
-        wilayat_name = wilayat["name_en"] if wilayat else None
-        gov_id = governorate["id"] if governorate else None
-        expansion_level = "wilayat"
-        
+    if governorate or wilayat:
+        loc = resolve_location_by_name(governorate_name=governorate, wilayat_name=wilayat)
+        resolved_wilayat_name = loc["wilayat_name"]
+        gov_id = loc["gov_id"]
+        expansion_level = "wilayat" if resolved_wilayat_name else ("governorate" if gov_id else "all")
         resolved_location_data = {
-            "wilayat_en": wilayat["name_en"] if wilayat else None,
-            "wilayat_ar": wilayat["name_ar"] if wilayat else None,
-            "governorate_en": governorate["name_en"] if governorate else None,
-            "governorate_ar": governorate["name_ar"] if governorate else None,
+            "wilayat_en": resolved_wilayat_name,
+            "wilayat_ar": None,
+            "governorate_en": loc["gov_name_en"],
+            "governorate_ar": loc["gov_name_ar"],
             "expansion_level": expansion_level,
         }
 
@@ -776,9 +755,9 @@ def get_category_feed(
     promoted_ids_to_exclude = [l["id"] for l in promoted_listings]
 
     # Level 1: Wilayat
-    if wilayat_name:
+    if resolved_wilayat_name:
         organic_listings, total_organic = _fetch_organic_listings(
-            place_names=[wilayat_name],
+            place_names=[resolved_wilayat_name],
             category_ids=target_category_ids,
             condition=condition,
             min_price=min_price,
@@ -807,24 +786,8 @@ def get_category_feed(
                 limit=organic_limit,
             )
 
-    # Level 3: Expand to nearby governorates
-    if len(organic_listings) < MIN_RESULTS_THRESHOLD and nearby_gov_ids:
-        expansion_level = "nearby"
-        resolved_location_data["expansion_level"] = expansion_level
-        nearest_3 = nearby_gov_ids[:3]
-        wilayat_names = get_wilayats_for_governorates(nearest_3)
-        if wilayat_names:
-            organic_listings, total_organic = _fetch_organic_listings(
-                place_names=wilayat_names,
-                category_ids=target_category_ids,
-                condition=condition,
-                min_price=min_price,
-                max_price=max_price,
-                seller_type=seller_type,
-                exclude_ids=promoted_ids_to_exclude,
-                skip=skip_offset,
-                limit=organic_limit,
-            )
+    # Level 3: Expand to nearby governorates — not applicable in name-based mode
+    # (no proximity ranking without GPS; fall straight to All Oman)
 
     # Level 4: All Oman
     if len(organic_listings) < MIN_RESULTS_THRESHOLD:

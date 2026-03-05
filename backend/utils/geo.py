@@ -136,3 +136,62 @@ def get_wilayats_for_governorates(governorate_ids: List[str]) -> List[str]:
         for loc in locations
         if loc["type"] == "city" and loc.get("parent_id") in gov_set
     ]
+
+
+def resolve_location_by_name(
+    governorate_name: Optional[str] = None,
+    wilayat_name: Optional[str] = None,
+) -> Dict:
+    """
+    Resolve a governorate/wilayat by name (en or ar) — no GPS needed.
+
+    Returns:
+        {
+            "wilayat_name": str | None,   # exact name_en matched
+            "gov_id": str | None,
+            "gov_name_en": str | None,
+            "gov_name_ar": str | None,
+        }
+    """
+    locations = _get_all_locations_with_coords()
+    governorates = [loc for loc in locations if loc["type"] == "state"]
+    wilayats = [loc for loc in locations if loc["type"] == "city"]
+
+    matched_gov = None
+    matched_wilayat_name_en = None
+
+    # Try to match governorate first
+    if governorate_name:
+        gov_name_lower = governorate_name.strip().lower()
+        for g in governorates:
+            if (
+                g.get("name_en", "").lower() == gov_name_lower
+                or g.get("name_ar", "").strip() == governorate_name.strip()
+            ):
+                matched_gov = g
+                break
+
+    # Try to match wilayat and derive governorate from it
+    if wilayat_name:
+        wil_name_lower = wilayat_name.strip().lower()
+        for w in wilayats:
+            if (
+                w.get("name_en", "").lower() == wil_name_lower
+                or w.get("name_ar", "").strip() == wilayat_name.strip()
+            ):
+                matched_wilayat_name_en = w["name_en"]
+                if not matched_gov:
+                    # Derive parent governorate
+                    parent_id = w.get("parent_id")
+                    for g in governorates:
+                        if g["id"] == parent_id:
+                            matched_gov = g
+                            break
+                break
+
+    return {
+        "wilayat_name": matched_wilayat_name_en,
+        "gov_id": matched_gov["id"] if matched_gov else None,
+        "gov_name_en": matched_gov.get("name_en") if matched_gov else None,
+        "gov_name_ar": matched_gov.get("name_ar") if matched_gov else None,
+    }

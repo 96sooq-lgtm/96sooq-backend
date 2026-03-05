@@ -597,6 +597,45 @@ def update_listing(
     return updated
 
 
+# -------------------------------------------------
+# REPORT ENDPOINTS
+# -------------------------------------------------
+
+@router.post("/{listing_id}/report", status_code=201)
+def report_listing(
+    listing_id: str,
+    reason: str = Query(..., min_length=5, max_length=1000),
+    current_user: dict = Depends(get_current_customer),
+):
+    """
+    Report a listing for abuse, fraud, or prohibited content.
+    Each user can only report the same listing once.
+    """
+    user_id = current_user["id"]
+
+    listing = db.select_one("listings", listing_id)
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+
+    # Block self-report
+    if listing.get("user_id") == user_id:
+        raise HTTPException(status_code=400, detail="You cannot report your own listing")
+
+    # Check for duplicate report
+    existing = db.select("user_reports", filters={"reported_by": user_id, "listing_id": listing_id})
+    if existing:
+        raise HTTPException(status_code=409, detail="You have already reported this listing")
+
+    db.insert("user_reports", {
+        "reported_by": user_id,
+        "target_type": "listing",
+        "listing_id": listing_id,
+        "reason": reason,
+    })
+
+    logger.warning(f"Listing reported: listing={listing_id}, by={user_id}, reason={reason}")
+    return {"success": True, "message": "Report submitted. Our team will review it."}
+
 
 # -------------------------------------------------
 # ADMIN ENDPOINTS
@@ -606,24 +645,33 @@ def update_listing(
 def list_all_listings_admin(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
-    status: Optional[str] = None
+    status: Optional[str] = None,
+    category_id: Optional[str] = Query(None, description="Filter by category ID"),
+    user_id: Optional[str] = Query(None, description="Filter by owner user ID"),
+    q: Optional[str] = Query(None, description="Search by title (partial match)"),
 ):
     """
-    Admin: List all listings with optional status filter.
-    Used for approval management in admin panel.
+    Admin: List all listings with optional filters.
+    Supports: status, category_id, user_id, and title search (q).
     """
     def query_func(table):
         query = table.select("*, listing_images(*), stores(*, locations(*)), app_users(*), categories(*), locations(*), listing_promotions(*, pricing_plans(*))")
-        
+
         if status:
             query = query.eq("status", status)
-            
+        if category_id:
+            query = query.eq("category_id", category_id)
+        if user_id:
+            query = query.eq("user_id", user_id)
+        if q:
+            # Supabase PostgREST ilike for case-insensitive partial match
+            query = query.ilike("title", f"%{q}%")
+
         return query.range(skip, skip + limit - 1).order("created_at", desc=True)
 
     result = db.query("listings", query_func)
     listings = result.data if result.data else []
-    
-    # Batch fetch images — 1 query instead of N
+
     if listings:
         wilayats_map = get_wilayats_map(listings)
         fav_set = get_favorites_set(current_user)
@@ -637,13 +685,87 @@ def list_all_listings_admin(
 def approve_listing(listing_id: str):
     updated = db.update("listings", listing_id, {"status": "active"})
     if not updated:
-         raise HTTPException(status_code=404, detail="Listing not found or update failed")
+        raise HTTPException(status_code=404, detail="Listing not found or update failed")
+
+    # Re-activate any boosts that were paused during a previous rejection
+    from datetime import datetime as _dt
+    now_iso = _dt.utcnow().isoformat()
+
+    def paused_promo_query(table):
+        return (
+            table.select("id")
+            .eq("listing_id", listing_id)
+            .eq("status", "paused")
+            .gte("end_date", now_iso)
+        )
+
+    paused_result = db.query("listing_promotions", paused_promo_query)
+    if paused_result.data:
+        for promo in paused_result.data:
+            db.update("listing_promotions", promo["id"], {"status": "active"})
+        logger.info(f"Resumed {len(paused_result.data)} paused boost(s) for approved listing {listing_id}")
+
     return updated
 
 @admin_router.put("/{listing_id}/reject")
 def reject_listing(listing_id: str, reason: str = Query(..., min_length=1)):
+    listing = db.select_one("listings", listing_id)
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+
     updated = db.update("listings", listing_id, {"status": "rejected", "rejection_reason": reason})
     if not updated:
-         raise HTTPException(status_code=404, detail="Listing not found or update failed")
+        raise HTTPException(status_code=500, detail="Update failed")
+
+    # Return the quota slot to the user's active subscription (if not unlimited)
+    user_id = listing.get("user_id")
+    if user_id:
+        from datetime import datetime
+        now_iso = datetime.utcnow().isoformat()
+
+        def sub_query(table):
+            return (
+                table.select("id, remaining_quota")
+                .eq("user_id", user_id)
+                .eq("status", "active")
+                .gte("end_date", now_iso)
+                .order("end_date", desc=True)
+                .limit(1)
+            )
+
+        sub_result = db.query("user_subscriptions", sub_query)
+        if sub_result.data:
+            active_sub = sub_result.data[0]
+            remaining = active_sub.get("remaining_quota", 0)
+            # -1 means unlimited — don't touch it
+            if remaining >= 0:
+                db.update(
+                    "user_subscriptions",
+                    active_sub["id"],
+                    {"remaining_quota": remaining + 1},
+                )
+                logger.info(
+                    f"Quota refunded for user {user_id} after listing {listing_id} rejection. "
+                    f"New remaining={remaining + 1}"
+                )
+
+    # Pause any active ad boosts so the owner doesn't lose paid boost days
+    from datetime import datetime as _dt
+    now_iso = _dt.utcnow().isoformat()
+
+    def promo_query(table):
+        return (
+            table.select("id")
+            .eq("listing_id", listing_id)
+            .eq("status", "active")
+            .gte("end_date", now_iso)
+        )
+
+    promo_result = db.query("listing_promotions", promo_query)
+    if promo_result.data:
+        for promo in promo_result.data:
+            db.update("listing_promotions", promo["id"], {"status": "paused"})
+        logger.info(f"Paused {len(promo_result.data)} active boost(s) for rejected listing {listing_id}")
+
     return updated
 

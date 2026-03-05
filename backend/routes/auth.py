@@ -1,10 +1,14 @@
-from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi import APIRouter, HTTPException, status, Depends, Request
 from models import schemas
 from db.supabase_client import db
 from utils.auth import create_access_token, create_customer_token, get_current_customer
 from utils.logger import get_logger
 from pydantic import BaseModel, EmailStr
 from typing import Optional
+try:
+    from main import limiter
+except ImportError:
+    limiter = None
 
 logger = get_logger(__name__)
 
@@ -43,7 +47,7 @@ class OAuthCompleteProfileRequest(BaseModel):
 # -------------------------------------------------
 
 @router.post("/oauth/check-user", response_model=OAuthCheckResponse)
-def oauth_check_user(payload: OAuthCheckRequest):
+def oauth_check_user(request: Request, payload: OAuthCheckRequest):
     """
     Step 1: Check if user exists after Google/Apple/Facebook OAuth.
     
