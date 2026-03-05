@@ -674,7 +674,7 @@ def list_all_listings_admin(
 
     if listings:
         wilayats_map = get_wilayats_map(listings)
-        fav_set = get_favorites_set(current_user)
+        fav_set = get_favorites_set(None)
         for i in range(len(listings)):
             listings[i] = format_joined_listing(listings[i], wilayats_map, fav_set)
 
