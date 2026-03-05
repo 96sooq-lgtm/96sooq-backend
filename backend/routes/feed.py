@@ -454,6 +454,9 @@ def get_location_offers(
                 f"type.eq.offers,"
                 f"and(type.eq.top_offers,or(governorate_id.eq.{gov_id},governorate_id.is.null))"
             )
+        else:
+            # No location provided, only show admin offers
+            query = query.eq("type", "offers")
 
         return query.range(actual_skip, actual_skip + limit - 1).order("created_at", desc=True)
 
@@ -474,6 +477,10 @@ def get_location_offers(
                 f"type.eq.offers,"
                 f"and(type.eq.top_offers,or(governorate_id.eq.{gov_id},governorate_id.is.null))"
             )
+        else:
+            # No location provided, only show admin offers
+            query = query.eq("type", "offers")
+            
         return query.limit(0)
 
     count_result = db.query("ad_banners", count_func)
