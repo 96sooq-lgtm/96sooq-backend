@@ -45,7 +45,7 @@ class PaymobManager:
             "items": [
                 {
                     "name": item if isinstance(item, str) else item.get("name", "Service"),
-                    "amount": amount_cents // len(items) if items else amount_cents,
+                    "amount": item.get("amount", amount_cents // len(items)) if isinstance(item, dict) else amount_cents // len(items),
                     "description": item if isinstance(item, str) else item.get("description", ""),
                     "quantity": 1
                 }

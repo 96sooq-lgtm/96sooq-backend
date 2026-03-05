@@ -266,7 +266,10 @@ async def checkout(
             raise HTTPException(status_code=400, detail="Your subscription quota is exhausted.")
         
         metadata["use_existing_quota"] = True
-        items.append("Listing from Active Subscription")
+        items.append({
+            "name": "Listing from Active Subscription",
+            "amount": 0
+        })
         
     else:
         if not payload.listing_plan_id:
@@ -295,7 +298,10 @@ async def checkout(
 
         total_amount += plan_price
         metadata["listing_plan_id"] = payload.listing_plan_id
-        items.append(f"Listing Plan: {plan['name_en']}")
+        items.append({
+            "name": f"Listing Plan: {plan['name_en']}",
+            "amount": int(round(plan_price * 1000))
+        })
 
     # 3. Calculate Ad Price (optional add-on)
     if payload.ad_plan_id:
@@ -319,9 +325,21 @@ async def checkout(
         
         if ad_total > 0:
             total_amount += ad_total
-            items.append(f"Ad Boost: {ad_plan['name_en']} ({ad_duration} days)")
+            items.append({
+                "name": f"Ad Boost: {ad_plan['name_en']} ({ad_duration} days)",
+                "amount": int(round(ad_total * 1000))
+            })
             
         metadata["ad_duration_days"] = ad_duration
+
+    # Add 2% processing fee
+    if total_amount > 0:
+        processing_fee = round(total_amount * 0.02, 3)
+        total_amount += processing_fee
+        items.append({
+            "name": "Service Charge (2%)",
+            "amount": int(round(processing_fee * 1000))
+        })
 
     logger.info(f"Checkout total: {total_amount} {payload.currency} for {len(items)} items")
     
@@ -370,7 +388,7 @@ async def checkout(
 
     # 5. Initiate Payment (all listings are paid now)
     try:
-        amount_cents = int(total_amount * 1000) # OMR 3 decimals
+        amount_cents = int(round(total_amount * 1000)) # OMR 3 decimals
         
         # Prepare Billing Data
         billing = {

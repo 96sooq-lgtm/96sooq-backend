@@ -49,9 +49,7 @@ def enrich_banners(banners):
                 list_of_images = b_imgs if isinstance(b_imgs, list) else [b_imgs]
             elif b.get("image_url"):
                 list_of_images = [b["image_url"]]
-        
-        b["images"] = list_of_images
-        
+                
         # Always make sure image_url is set to the first image if not provided
         if not b.get("image_url") and list_of_images:
             b["image_url"] = list_of_images[0]

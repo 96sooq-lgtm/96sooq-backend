@@ -817,7 +817,7 @@ def get_category_feed(
     if actual_skip == 0:
         # Fetch all possible promoted banners for this location
         p_ids = _get_promoted_listing_ids(
-            wilayat_name=wilayat_name,
+            wilayat_name=resolved_wilayat_name,
             governorate_id=gov_id,
         )
         
