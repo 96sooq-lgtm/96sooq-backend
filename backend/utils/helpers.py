@@ -161,9 +161,9 @@ def batch_listing_promotions(listing_ids: List[str]) -> Dict[str, List[Dict]]:
                 pid = promo["listing_id"]
                 plan = plans_map.get(promo.get("plan_id"))
                 
-                # Only include promotions that are advertisement plans (exclude chat_screen)
-                # so chat ads don't accidentally render 'Promoted' badges in the feed
-                if plan and plan.get("type") == "ad" and plan.get("ad_sub_type") != "chat_screen":
+                # Only include promotions that are specifically product_listing ads
+                # so other types (like chat ads or offers) don't render badges
+                if plan and plan.get("type") == "ad" and plan.get("ad_sub_type") == "product_listing":
                     if pid not in promotions_map:
                         promotions_map[pid] = []
                         
@@ -223,8 +223,8 @@ def format_joined_listing(listing: dict, wilayats_map: dict, fav_set: set) -> di
     for promo in listing.get("listing_promotions") or []:
         if promo.get("status") == "active" and (promo.get("end_date") or "") >= now_str:
             plan = promo.get("pricing_plans")
-            # Exclude chat_screen so it doesnt show as a badge
-            if plan and plan.get("type") == "ad" and plan.get("ad_sub_type") != "chat_screen":
+            # Only include product_listing so badges are correct
+            if plan and plan.get("type") == "ad" and plan.get("ad_sub_type") == "product_listing":
                 promos.append({
                     "id": promo.get("id"),
                     "name_en": plan.get("name_en"),
