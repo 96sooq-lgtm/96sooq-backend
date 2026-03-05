@@ -7,7 +7,7 @@ from typing import Optional, List
 from db.supabase_client import db
 from utils.auth import get_optional_current_customer
 from utils.geo import resolve_location, resolve_location_by_name, get_wilayat_names_in_governorate, get_wilayats_for_governorates
-from utils.helpers import batch_listing_images, batch_locations, get_viewable_image_url, batch_stores, format_joined_listing, get_wilayats_map, get_favorites_set
+from utils.helpers import batch_listing_images, batch_locations, get_viewable_image_url, batch_stores, format_joined_listing, get_wilayats_map, get_favorites_set, batch_listing_promotions
 from utils.logger import get_logger
 import math
 import random
@@ -400,6 +400,11 @@ def get_feed(
                         seller_phone = user.get("phone_number")
                     
             listing["seller_phone_number"] = seller_phone
+
+        # Batch fetch promotions for all listings
+        promotions_map = batch_listing_promotions(listing_ids)
+        for listing in all_listings:
+            listing["promotions"] = promotions_map.get(listing["id"], [])
 
     # 6. Pagination math
     total = total_organic + (len(promoted_listings) if page == 0 else 0)
@@ -990,6 +995,11 @@ def get_category_feed(
                         seller_phone = user.get("phone_number")
                     
             l["seller_phone_number"] = seller_phone
+
+        # Batch fetch promotions for all listings
+        promotions_map = batch_listing_promotions(listing_ids)
+        for l in all_listings:
+            l["promotions"] = promotions_map.get(l["id"], [])
     total = total_organic + (len(promoted_listings) if page == 0 else 0)
     pages = math.ceil(total / limit) if total > 0 else 0
 
