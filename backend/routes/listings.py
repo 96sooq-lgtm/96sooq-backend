@@ -95,12 +95,15 @@ def format_joined_listing(listing: dict, wilayats_map: dict, fav_set: set) -> di
     listing["images"] = [get_viewable_image_url(img.get("image_url")) for img in sorted_imgs]
     listing.pop("listing_images", None)
     
-    # Promotions
+    # Promotions: Only include product_listing so badges are correct.
+    # We have separate APIs for offers and chat_screen ads.
     promos = []
+    is_promoted = False
     for promo in listing.get("listing_promotions") or []:
         if promo.get("status") == "active" and (promo.get("end_date") or "") >= now_str:
             plan = promo.get("pricing_plans")
-            if plan and plan.get("type") == "ad":
+            if plan and plan.get("type") == "ad" and plan.get("ad_sub_type") == "product_listing":
+                is_promoted = True
                 promos.append({
                     "id": promo.get("id"),
                     "name_en": plan.get("name_en"),
@@ -110,6 +113,7 @@ def format_joined_listing(listing: dict, wilayats_map: dict, fav_set: set) -> di
                     "end_date": promo.get("end_date")
                 })
     listing["promotions"] = promos
+    listing["is_promoted"] = is_promoted
     listing.pop("listing_promotions", None)
     
     # Favorites
@@ -438,6 +442,7 @@ def get_listing(listing_id: str, current_user: Optional[dict] = Depends(get_opti
     listing["seller_type"] = "individual"
     listing["is_favorite"] = False
     listing["promotions"] = []
+    listing["is_promoted"] = False
     
     # 1. Fetch images
     images_map = batch_listing_images([listing_id])
@@ -507,6 +512,7 @@ def get_listing(listing_id: str, current_user: Optional[dict] = Depends(get_opti
     # 6. Fetch active promotions
     from utils.helpers import batch_listing_promotions
     listing["promotions"] = batch_listing_promotions([listing_id]).get(listing_id, [])
+    listing["is_promoted"] = len(listing["promotions"]) > 0
     
     # 7. Security: Block Unauthorized Access to Drafts/Rejected/Expired
     is_admin = False

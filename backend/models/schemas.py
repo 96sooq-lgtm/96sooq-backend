@@ -313,6 +313,7 @@ class ListingOut(BaseModel):
     store_logo: Optional[str] = None
     images: Optional[List[str]] = []
     promotions: Optional[List[dict]] = []
+    is_promoted: bool = False
 
 class FavoriteListingOut(ListingOut):
     favorited_at: Optional[str] = None

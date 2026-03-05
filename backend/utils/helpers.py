@@ -220,11 +220,13 @@ def format_joined_listing(listing: dict, wilayats_map: dict, fav_set: set) -> di
     
     # Promotions
     promos = []
+    is_promoted = False
     for promo in listing.get("listing_promotions") or []:
         if promo.get("status") == "active" and (promo.get("end_date") or "") >= now_str:
             plan = promo.get("pricing_plans")
             # Only include product_listing so badges are correct
             if plan and plan.get("type") == "ad" and plan.get("ad_sub_type") == "product_listing":
+                is_promoted = True
                 promos.append({
                     "id": promo.get("id"),
                     "name_en": plan.get("name_en"),
@@ -234,6 +236,7 @@ def format_joined_listing(listing: dict, wilayats_map: dict, fav_set: set) -> di
                     "end_date": promo.get("end_date")
                 })
     listing["promotions"] = promos
+    listing["is_promoted"] = is_promoted
     listing.pop("listing_promotions", None)
     
     # Favorites
