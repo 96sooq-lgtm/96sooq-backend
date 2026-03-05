@@ -405,6 +405,8 @@ def get_feed(
         promotions_map = batch_listing_promotions(listing_ids)
         for listing in all_listings:
             listing["promotions"] = promotions_map.get(listing["id"], [])
+            # Also set is_promoted if it's already true (from top slot) or has a product_listing promotion
+            listing["is_promoted"] = listing.get("is_promoted", False) or len(listing["promotions"]) > 0
 
     # 6. Pagination math
     total = total_organic + (len(promoted_listings) if page == 0 else 0)
@@ -1000,6 +1002,8 @@ def get_category_feed(
         promotions_map = batch_listing_promotions(listing_ids)
         for l in all_listings:
             l["promotions"] = promotions_map.get(l["id"], [])
+            # Also set is_promoted if it's already true (from top slot) or has a product_listing promotion
+            l["is_promoted"] = l.get("is_promoted", False) or len(l["promotions"]) > 0
     total = total_organic + (len(promoted_listings) if page == 0 else 0)
     pages = math.ceil(total / limit) if total > 0 else 0
 
