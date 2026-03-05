@@ -131,6 +131,15 @@ app.include_router(admin_chats_router)
 app.include_router(feed_router)
 
 
+@app.get("/feed")
+@app.get("/feed/")
+async def feed_redirect(request: Request):
+    from fastapi.responses import RedirectResponse
+    query_params = str(request.query_params)
+    url = f"/api/feed/?{query_params}" if query_params else "/api/feed/"
+    return RedirectResponse(url=url)
+
+
 @app.get("/")
 async def root():
     return {"message": "96sooq Backend API", "version": "1.0.0"}

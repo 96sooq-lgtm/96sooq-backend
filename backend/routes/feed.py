@@ -191,6 +191,7 @@ def get_feed(
     governorate: Optional[str] = Query(None, description="Governorate name (en or ar)"),
     wilayat: Optional[str] = Query(None, description="Wilayat name (en or ar)"),
     page: int = Query(0, ge=0, description="Page number (0-based)"),
+    skip: int = Query(0, ge=0, description="Alternative to page (offset)"),
     limit: int = Query(20, ge=1, le=50, description="Items per page"),
     category_id: Optional[str] = Query(None, description="Filter by category"),
     condition: Optional[str] = Query(None, description="Filter: 'new' or 'used'"),
@@ -218,8 +219,10 @@ def get_feed(
     gov_name_ar = loc["gov_name_ar"]
 
     expansion_level = "wilayat"
-    skip_offset = page * (limit - PROMOTED_SLOTS_PER_PAGE) if page > 0 else 0
-    organic_limit = limit - PROMOTED_SLOTS_PER_PAGE if page == 0 else limit
+    
+    # Use skip if provided, else use page
+    actual_skip = skip if skip > 0 else page * (limit - PROMOTED_SLOTS_PER_PAGE)
+    organic_limit = limit - PROMOTED_SLOTS_PER_PAGE if actual_skip == 0 else limit
 
     # 2. Fetch promoted listings (only on first page or rotating)
     promoted_listings = []
@@ -280,7 +283,7 @@ def get_feed(
             max_price=max_price,
             seller_type=seller_type,
             exclude_ids=promoted_ids,
-            skip=skip_offset,
+            skip=actual_skip,
             limit=organic_limit,
         )
 
@@ -294,7 +297,7 @@ def get_feed(
                 category_id=category_id,
                 condition=condition,
                 exclude_ids=promoted_ids,
-                skip=skip_offset,
+                skip=actual_skip,
                 limit=organic_limit,
             )
 
@@ -308,7 +311,7 @@ def get_feed(
             max_price=max_price,
             seller_type=seller_type,
             exclude_ids=promoted_ids,
-            skip=skip_offset,
+            skip=actual_skip,
             limit=organic_limit,
         )
 
@@ -417,6 +420,7 @@ def get_location_offers(
     governorate: Optional[str] = Query(None, description="Governorate name (en or ar)"),
     wilayat: Optional[str] = Query(None, description="Wilayat name (en or ar)"),
     page: int = Query(0, ge=0),
+    skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=50),
 ):
     """
@@ -428,7 +432,8 @@ def get_location_offers(
     wilayat_name = loc["wilayat_name"]
     gov_id = loc["gov_id"]
 
-    skip = page * limit
+    # Use skip if provided, else use page
+    actual_skip = skip if skip > 0 else page * limit
 
     def query_func(table):
         query = (
@@ -450,7 +455,7 @@ def get_location_offers(
                 "governorate_id.is.null"
             )
 
-        return query.range(skip, skip + limit - 1).order("created_at", desc=True)
+        return query.range(actual_skip, actual_skip + limit - 1).order("created_at", desc=True)
 
     # Count
     def count_func(table):
@@ -502,6 +507,7 @@ def get_nearby_stores(
     governorate: Optional[str] = Query(None, description="Governorate name (en or ar)"),
     wilayat: Optional[str] = Query(None, description="Wilayat name (en or ar)"),
     page: int = Query(0, ge=0),
+    skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=50),
     min_rating: Optional[float] = Query(None, description="Minimum average rating")
 ):
@@ -514,7 +520,8 @@ def get_nearby_stores(
     gov_id = loc["gov_id"]
     expansion_level = "wilayat"
 
-    skip = page * limit
+    # Use skip if provided, else use page
+    actual_skip = skip if skip > 0 else page * limit
 
     def _count_stores(gov_filter=None, wilayat_filter=None, all_mode=False):
         def count_func(table):
@@ -546,7 +553,7 @@ def get_nearby_stores(
                     query = query.eq("governorate_id", gov_filter)
                     
             if min_rating is None:
-                query = query.range(skip, skip + limit - 1)
+                query = query.range(actual_skip, actual_skip + limit - 1)
                 
             return query.order("created_at", desc=True)
         result = db.query("stores", query_func)
@@ -565,13 +572,7 @@ def get_nearby_stores(
         total = _count_stores(gov_filter=gov_id)
         stores = _fetch_stores(gov_filter=gov_id)
 
-    # Level 3: Nearby governorates
-    if len(stores) < MIN_RESULTS_THRESHOLD and nearby_gov_ids:
-        expansion_level = "nearby"
-        total = _count_stores(gov_filter=nearby_gov_ids[:3])
-        stores = _fetch_stores(gov_filter=nearby_gov_ids[:3])
-
-    # Level 4: All Oman
+    # Level 3: All Oman (expansion_level "nearby" is for GPS mode)
     if len(stores) < MIN_RESULTS_THRESHOLD:
         expansion_level = "all"
         total = _count_stores(all_mode=True)
@@ -592,7 +593,7 @@ def get_nearby_stores(
     if min_rating is not None:
         stores = [s for s in stores if s.get("average_rating", 0.0) >= min_rating]
         total = len(stores)
-        stores = stores[skip : skip + limit]
+        stores = stores[actual_skip : actual_skip + limit]
 
     pages = math.ceil(total / limit) if total > 0 else 0
 
@@ -644,6 +645,7 @@ def get_category_feed(
     governorate: Optional[str] = Query(None, description="Governorate name (en or ar)"),
     wilayat: Optional[str] = Query(None, description="Wilayat name (en or ar)"),
     page: int = Query(0, ge=0),
+    skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=50),
     condition: Optional[str] = Query(None, description="Filter: 'new' or 'used'"),
     min_price: Optional[float] = Query(None, description="Minimum price"),
@@ -710,7 +712,8 @@ def get_category_feed(
         }
 
     # 4. Fetch listings with location-aware expansion
-    skip = page * limit
+    actual_skip = skip if skip > 0 else page * limit
+    
     organic_listings = []
     total_organic = 0
     
@@ -718,7 +721,7 @@ def get_category_feed(
     promoted_listings = []
     promoted_ids = []
     
-    if page == 0:
+    if actual_skip == 0:
         # Fetch all possible promoted banners for this location
         p_ids = _get_promoted_listing_ids(
             wilayat_name=wilayat_name,
@@ -745,16 +748,16 @@ def get_category_feed(
             
             # Prepare organic limits to account for promoted slots
             organic_limit = limit - len(promoted_listings)
-            skip_offset = 0 # page 0
+            # actual_skip is already 0
         else:
             organic_limit = limit
-            skip_offset = 0
     else:
-        # For pages > 0, we fetch full organic limit
+        # For offsets > 0, we fetch full organic limit
         # Calculation should be consistent with the regular feed
         # We assume 3 slots were taken on page 0
         organic_limit = limit
-        skip_offset = page * (limit - PROMOTED_SLOTS_PER_PAGE) if page > 0 else 0
+        if skip == 0: # originated from 'page'
+            actual_skip = page * (limit - PROMOTED_SLOTS_PER_PAGE) if page > 0 else 0
         
     promoted_ids_to_exclude = [l["id"] for l in promoted_listings]
 
@@ -768,7 +771,7 @@ def get_category_feed(
             max_price=max_price,
             seller_type=seller_type,
             exclude_ids=promoted_ids_to_exclude,
-            skip=skip_offset,
+            skip=actual_skip,
             limit=organic_limit,
         )
 
@@ -786,7 +789,7 @@ def get_category_feed(
                 max_price=max_price,
                 seller_type=seller_type,
                 exclude_ids=promoted_ids_to_exclude,
-                skip=skip_offset,
+                skip=actual_skip,
                 limit=organic_limit,
             )
 
@@ -804,7 +807,7 @@ def get_category_feed(
             max_price=max_price,
             seller_type=seller_type,
             exclude_ids=promoted_ids_to_exclude,
-            skip=skip_offset,
+            skip=actual_skip,
             limit=organic_limit,
         )
 
