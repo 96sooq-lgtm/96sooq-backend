@@ -10,7 +10,8 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 # In-memory cache for locations (refreshed per process lifetime)
-_locations_cache: Optional[List[Dict]] = None
+_locations_cache: Optional[List[Dict]] = None  # Only locations WITH coordinates (for GPS/distance)
+_all_locations_cache: Optional[List[Dict]] = None  # ALL active locations (for name-based resolution)
 
 
 def _get_all_locations_with_coords() -> List[Dict]:
@@ -33,10 +34,29 @@ def _get_all_locations_with_coords() -> List[Dict]:
     return _locations_cache
 
 
+def _get_all_locations() -> List[Dict]:
+    """Fetch ALL active locations regardless of coordinates. Cached in-memory."""
+    global _all_locations_cache
+    if _all_locations_cache is not None:
+        return _all_locations_cache
+
+    def query_func(table):
+        return (
+            table.select("id, name_en, name_ar, type, parent_id, latitude, longitude")
+            .eq("is_active", True)
+        )
+
+    result = db.query("locations", query_func)
+    _all_locations_cache = result.data if result.data else []
+    logger.info(f"Loaded {len(_all_locations_cache)} total locations into name-resolution cache")
+    return _all_locations_cache
+
+
 def clear_location_cache():
-    """Clear the in-memory location cache (call after seeding new coordinates)."""
-    global _locations_cache
+    """Clear the in-memory location caches (call after seeding new data)."""
+    global _locations_cache, _all_locations_cache
     _locations_cache = None
+    _all_locations_cache = None
 
 
 def haversine_distance(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
@@ -119,7 +139,8 @@ def resolve_location(
 
 def get_wilayat_names_in_governorate(governorate_id: str) -> List[str]:
     """Get all wilayat names (name_en) belonging to a governorate."""
-    locations = _get_all_locations_with_coords()
+    # Use full location list — wilayats may lack coordinates but should still be searchable
+    locations = _get_all_locations()
     return [
         loc["name_en"]
         for loc in locations
@@ -129,7 +150,8 @@ def get_wilayat_names_in_governorate(governorate_id: str) -> List[str]:
 
 def get_wilayats_for_governorates(governorate_ids: List[str]) -> List[str]:
     """Get all wilayat names for multiple governorates."""
-    locations = _get_all_locations_with_coords()
+    # Use full location list — wilayats may lack coordinates but should still be searchable
+    locations = _get_all_locations()
     gov_set = set(governorate_ids)
     return [
         loc["name_en"]
@@ -153,7 +175,8 @@ def resolve_location_by_name(
             "gov_name_ar": str | None,
         }
     """
-    locations = _get_all_locations_with_coords()
+    # Use full location list so governorates/wilayats without coords are still resolvable by name
+    locations = _get_all_locations()
     governorates = [loc for loc in locations if loc["type"] == "state"]
     wilayats = [loc for loc in locations if loc["type"] == "city"]
 

@@ -4,7 +4,7 @@ Handles Firebase Admin SDK initialization and push notification delivery.
 """
 import os
 import firebase_admin
-from firebase_admin import credentials, messaging
+from firebase_admin import credentials, messaging, exceptions
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -103,7 +103,7 @@ def send_push_notification(
     except messaging.UnregisteredError:
         logger.warning(f"FCM token unregistered (stale): {token[:20]}...")
         return False
-    except messaging.InvalidArgumentError as e:
+    except exceptions.InvalidArgumentError as e:
         logger.error(f"FCM invalid argument: {e}")
         return False
     except Exception as e:

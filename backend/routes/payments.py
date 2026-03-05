@@ -54,14 +54,15 @@ async def activate_bundle(payment_id: str, metadata: dict, user_id: str):
     Called by the webhook after payment confirmation.
     Metadata contains: listing_id, listing_plan_id, ad_plan_id.
     """
+    logger.info(f"Activating bundle for payment={payment_id}, user={user_id}")
+
+    listing_id      = metadata.get("listing_id")
+    listing_plan_id = metadata.get("listing_plan_id")
+    ad_plan_id      = metadata.get("ad_plan_id")
+    now             = datetime.utcnow()
+
     try:
-        logger.info(f"Activating bundle for payment={payment_id}, user={user_id}")
-
-        listing_id = metadata.get("listing_id")
-        listing_plan_id = metadata.get("listing_plan_id")
-        ad_plan_id = metadata.get("ad_plan_id")
-
-        # 1. Activate Listing — move to pending_approval and set expiration
+        # ── 1. Activate Listing ───────────────────────────────────────────────
         if listing_id:
             listing_expires_at = None
 
@@ -69,70 +70,69 @@ async def activate_bundle(payment_id: str, metadata: dict, user_id: str):
             if listing_plan_id:
                 plan = db.select_one("pricing_plans", listing_plan_id)
                 if plan:
-                    days = plan.get("duration_days", 30)
+                    days  = plan.get("duration_days", 30)
                     quota = plan.get("quota", 0)
-
-                    end_date = (datetime.utcnow() + timedelta(days=days)).isoformat()
+                    end_date = (now + timedelta(days=days)).isoformat()
                     listing_expires_at = end_date
 
-                    sub_data = {
-                        "user_id": user_id,
-                        "plan_id": listing_plan_id,
-                        "start_date": datetime.utcnow().isoformat(),
-                        "end_date": end_date,
-                        "remaining_quota": quota - 1 if quota > 0 else (quota if quota == -1 else 0),
-                        "status": "active"
-                    }
-                    db.insert("user_subscriptions", sub_data)
-                    logger.info(f"Subscription created: plan={listing_plan_id}, quota_remaining={sub_data['remaining_quota']}")
+                    remaining_quota = (quota - 1) if quota > 0 else (quota if quota == -1 else 0)
+                    db.insert("user_subscriptions", {
+                        "user_id":          user_id,
+                        "plan_id":          listing_plan_id,
+                        "start_date":       now.isoformat(),
+                        "end_date":         end_date,
+                        "remaining_quota":  remaining_quota,
+                        "status":           "active",
+                    })
+                    logger.info(f"Subscription created: plan={listing_plan_id}, quota_remaining={remaining_quota}")
 
             # b) Or deduct from existing subscription
             elif metadata.get("use_existing_quota"):
-                now = datetime.utcnow()
                 def sub_query(table):
-                    return table.select("*")\
-                        .eq("user_id", user_id)\
-                        .eq("status", "active")\
-                        .gte("end_date", now.isoformat())\
-                        .order("end_date", desc=True)\
+                    return (
+                        table.select("*")
+                        .eq("user_id", user_id)
+                        .eq("status", "active")
+                        .gte("end_date", now.isoformat())
+                        .order("end_date", desc=True)
                         .limit(1)
-                sub_result = db.query("user_subscriptions", sub_query)
-                active_sub = sub_result.data[0] if sub_result.data else None
-                
+                    )
+                sub_result  = db.query("user_subscriptions", sub_query)
+                active_sub  = sub_result.data[0] if sub_result.data else None
+
                 if active_sub:
                     remaining = active_sub.get("remaining_quota", 0)
                     if remaining > 0:
                         db.update("user_subscriptions", active_sub["id"], {"remaining_quota": remaining - 1})
                         logger.info(f"Deducted quota from subscription {active_sub['id']}. New remaining={remaining - 1}")
-                    
                     listing_expires_at = active_sub.get("end_date")
 
-            # Move listing to pending_approval and set expires_at
+            # Move listing to pending_approval
             listing_update = {"status": "pending_approval"}
             if listing_expires_at:
                 listing_update["expires_at"] = listing_expires_at
-                
             db.update("listings", listing_id, listing_update)
             logger.info(f"Listing {listing_id} moved to pending_approval (expires_at={listing_expires_at})")
 
-            # ── Push Notification: Payment success → listing under review ──
+            # ── Push Notification: payment success → listing under review ──
             try:
                 from services.notifications import notify_payment_success
-                listing_data = db.select_one("listings", listing_id)
-                listing_title = listing_data.get("title", "Your listing") if listing_data else "Your listing"
+
+                # Fetch listing + payment in one place (payment_record reused below)
+                listing_data   = db.select_one("listings", listing_id)
                 payment_record = db.select_one("payments", payment_id)
-                amount = payment_record.get("amount", 0) if payment_record else 0
-                currency = payment_record.get("currency", "OMR") if payment_record else "OMR"
+
+                listing_title = (listing_data or {}).get("title", "Your listing")
+                amount        = (payment_record or {}).get("amount", 0)
+                currency      = (payment_record or {}).get("currency", "OMR")
+
                 notify_payment_success(user_id, listing_id, listing_title, amount, currency)
             except Exception as notif_err:
                 logger.warning(f"Payment notification failed (non-blocking): {notif_err}")
 
-        # 2. Activate Ad Boost — extend existing if same plan already active, else create
+        # ── 2. Activate Ad Boost ──────────────────────────────────────────────
         if ad_plan_id:
             ad_duration_days = metadata.get("ad_duration_days", 1)
-            now = datetime.utcnow()
-            ad_end_date_dt = now + timedelta(days=ad_duration_days)
-            ad_end_date = ad_end_date_dt.isoformat()
 
             # Check if an active promotion for this plan+listing already exists
             def promo_query(table):
@@ -144,73 +144,83 @@ async def activate_bundle(payment_id: str, metadata: dict, user_id: str):
                     .gte("end_date", now.isoformat())
                     .limit(1)
                 )
-            promo_result = db.query("listing_promotions", promo_query)
+            promo_result   = db.query("listing_promotions", promo_query)
             existing_promo = promo_result.data[0] if promo_result.data else None
 
             if existing_promo:
-                # Extend from the current end_date instead of creating a duplicate
-                from datetime import datetime as _dt
+                # Extend from current end_date to avoid creating a duplicate
                 try:
-                    current_end = _dt.fromisoformat(existing_promo["end_date"].replace("Z", "+00:00")).replace(tzinfo=None)
+                    current_end = datetime.fromisoformat(
+                        existing_promo["end_date"].replace("Z", "+00:00")
+                    ).replace(tzinfo=None)
                 except Exception:
                     current_end = now
-                ad_end_date_dt = current_end + timedelta(days=ad_duration_days)
-                ad_end_date = ad_end_date_dt.isoformat()
+
+                ad_end_date = (current_end + timedelta(days=ad_duration_days)).isoformat()
                 db.update("listing_promotions", existing_promo["id"], {"end_date": ad_end_date})
                 logger.info(f"Ad boost {ad_plan_id} extended for listing {listing_id} to {ad_end_date}")
             else:
-                # Create promotion as 'pending' — it will be activated with fresh dates
-                # when admin approves the listing (see listings.py approve_listing)
-                promo_data = {
+                # Create as 'pending' — activated with fresh dates on admin approval
+                ad_end_date = (now + timedelta(days=ad_duration_days)).isoformat()
+                db.insert("listing_promotions", {
                     "listing_id": listing_id,
-                    "plan_id": ad_plan_id,
+                    "plan_id":    ad_plan_id,
                     "start_date": now.isoformat(),
-                    "end_date": ad_end_date,
-                    "status": "pending"
-                }
-                db.insert("listing_promotions", promo_data)
-                logger.info(f"Ad boost {ad_plan_id} created as pending for listing {listing_id} ({ad_duration_days} days — starts at approval)")
+                    "end_date":   ad_end_date,
+                    "status":     "pending",
+                })
+                logger.info(
+                    f"Ad boost {ad_plan_id} created as pending for listing {listing_id} "
+                    f"({ad_duration_days} days — starts at approval)"
+                )
 
-            # 3. Synchronize with ad_banners for the Banner/Offers feed
-            plan = db.select_one("pricing_plans", ad_plan_id)
-            if plan and plan.get("type") == "ad" and plan.get("ad_sub_type") in ["offers", "product_listing"]:
+            # ── 3. Sync with ad_banners for Banner/Offers feed ──
+            ad_plan = db.select_one("pricing_plans", ad_plan_id)
+            if ad_plan and ad_plan.get("type") == "ad" and ad_plan.get("ad_sub_type") in (
+                "offers", "product_listing", "chat_screen"
+            ):
                 listing = db.select_one("listings", listing_id)
                 if listing:
-                    banner_type = "top_offers" if plan["ad_sub_type"] == "offers" else "product_listing"
-                    
-                    # Update or Insert banner
-                    existing_banners = db.select("ad_banners", filters={"listing_id": listing_id, "type": banner_type})
-                    
-                    images = listing.get("images") or []
-                    image_url = images[0] if images else ""
-                    
-                    banner_data = {
-                        "user_id": payment["user_id"],
-                        "listing_id": listing_id,
-                        "type": banner_type,
-                        "name": listing.get("title", "Boosted Listing"),
-                        "image_url": image_url,
-                        "status": "pending_approval",
-                        "expires_at": ad_end_date,
-                        "governorate_id": listing.get("location_id"),
-                        "wilayat": listing.get("place"),
-                        "plan_id": ad_plan_id
+                    sub_type_map = {
+                        "offers":           "top_offers",
+                        "product_listing":  "product_listing",
+                        "chat_screen":      "chat_screen",
                     }
-                    
+                    banner_type = sub_type_map[ad_plan["ad_sub_type"]]
+                    images      = listing.get("images") or []
+
+                    banner_data = {
+                        "user_id":        user_id,
+                        "listing_id":     listing_id,
+                        "type":           banner_type,
+                        "name":           listing.get("title", "Boosted Listing"),
+                        "image_url":      images[0] if images else "",
+                        "status":         "pending_approval",
+                        "expires_at":     ad_end_date,
+                        "governorate_id": listing.get("location_id"),
+                        "wilayat":        listing.get("place"),
+                        "plan_id":        ad_plan_id,
+                    }
+
+                    existing_banners = db.select("ad_banners", filters={"listing_id": listing_id, "type": banner_type})
                     if existing_banners:
                         db.update("ad_banners", existing_banners[0]["id"], banner_data)
                     else:
                         db.insert("ad_banners", banner_data)
+
                     logger.info(f"Banner synced for listing {listing_id} (type={banner_type}, expires={ad_end_date})")
 
-        # Update payment status
+        # ── Mark payment success ──────────────────────────────────────────────
         db.update("payments", payment_id, {"status": "success"})
         logger.info(f"Payment {payment_id} marked as success")
 
     except Exception as e:
-        logger.error(f"Bundle activation error for payment {payment_id}: {type(e).__name__}: {e}", exc_info=True)
-        db.update("payments", payment_id, {"status": "failed_activation"})
-
+        logger.error(
+            f"Bundle activation error for payment {payment_id}: {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        # FIX: 'failed_activation' violates the payments_status_check DB constraint → use 'failed'
+        db.update("payments", payment_id, {"status": "failed"})
 
 @router.post("/checkout", response_model=CheckoutResponse)
 async def checkout(
