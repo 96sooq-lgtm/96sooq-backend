@@ -442,17 +442,17 @@ def get_location_offers(
             .in_("type", ["offers", "top_offers"])
         )
 
-        # Location: match wilayat, governorate, or global (no location set)
+        # Location: match wilayat, governorate, or global (no location set) for top_offers
+        # 'offers' (admin offers) are always included regardless of location
         if wilayat_name and gov_id:
             query = query.or_(
-                f"wilayat.eq.{wilayat_name},"
-                f"governorate_id.eq.{gov_id},"
-                "governorate_id.is.null"
+                f"type.eq.offers,"
+                f"and(type.eq.top_offers,or(wilayat.eq.{wilayat_name},governorate_id.eq.{gov_id},governorate_id.is.null))"
             )
         elif gov_id:
             query = query.or_(
-                f"governorate_id.eq.{gov_id},"
-                "governorate_id.is.null"
+                f"type.eq.offers,"
+                f"and(type.eq.top_offers,or(governorate_id.eq.{gov_id},governorate_id.is.null))"
             )
 
         return query.range(actual_skip, actual_skip + limit - 1).order("created_at", desc=True)
@@ -466,14 +466,13 @@ def get_location_offers(
         )
         if wilayat_name and gov_id:
             query = query.or_(
-                f"wilayat.eq.{wilayat_name},"
-                f"governorate_id.eq.{gov_id},"
-                "governorate_id.is.null"
+                f"type.eq.offers,"
+                f"and(type.eq.top_offers,or(wilayat.eq.{wilayat_name},governorate_id.eq.{gov_id},governorate_id.is.null))"
             )
         elif gov_id:
             query = query.or_(
-                f"governorate_id.eq.{gov_id},"
-                "governorate_id.is.null"
+                f"type.eq.offers,"
+                f"and(type.eq.top_offers,or(governorate_id.eq.{gov_id},governorate_id.is.null))"
             )
         return query.limit(0)
 
