@@ -159,15 +159,17 @@ async def activate_bundle(payment_id: str, metadata: dict, user_id: str):
                 db.update("listing_promotions", existing_promo["id"], {"end_date": ad_end_date})
                 logger.info(f"Ad boost {ad_plan_id} extended for listing {listing_id} to {ad_end_date}")
             else:
+                # Create promotion as 'pending' — it will be activated with fresh dates
+                # when admin approves the listing (see listings.py approve_listing)
                 promo_data = {
                     "listing_id": listing_id,
                     "plan_id": ad_plan_id,
                     "start_date": now.isoformat(),
                     "end_date": ad_end_date,
-                    "status": "active"
+                    "status": "pending"
                 }
                 db.insert("listing_promotions", promo_data)
-                logger.info(f"Ad boost {ad_plan_id} activated for listing {listing_id} for {ad_duration_days} days")
+                logger.info(f"Ad boost {ad_plan_id} created as pending for listing {listing_id} ({ad_duration_days} days — starts at approval)")
 
             # 3. Synchronize with ad_banners for the Banner/Offers feed
             plan = db.select_one("pricing_plans", ad_plan_id)
@@ -188,7 +190,7 @@ async def activate_bundle(payment_id: str, metadata: dict, user_id: str):
                         "type": banner_type,
                         "name": listing.get("title", "Boosted Listing"),
                         "image_url": image_url,
-                        "status": "active",
+                        "status": "pending_approval",
                         "expires_at": ad_end_date,
                         "governorate_id": listing.get("location_id"),
                         "wilayat": listing.get("place"),

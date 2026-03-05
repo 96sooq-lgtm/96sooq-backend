@@ -517,6 +517,16 @@ def get_listing(listing_id: str, current_user: Optional[dict] = Depends(get_opti
     
     if listing["status"] != "active" and not is_owner and not is_admin:
         raise HTTPException(status_code=403, detail="You do not have permission to view this listing")
+    
+    # Block access to expired listings for non-owners/non-admins
+    if listing["status"] == "active" and listing.get("expires_at") and not is_owner and not is_admin:
+        from datetime import datetime as _dt
+        try:
+            exp = _dt.fromisoformat(listing["expires_at"].replace("Z", "+00:00")).replace(tzinfo=None)
+            if _dt.utcnow() > exp:
+                raise HTTPException(status_code=410, detail="This listing has expired")
+        except (ValueError, TypeError):
+            pass  # If parsing fails, allow access
         
     return listing
 
@@ -683,14 +693,70 @@ def list_all_listings_admin(
 
 @admin_router.put("/{listing_id}/approve")
 def approve_listing(listing_id: str):
-    updated = db.update("listings", listing_id, {"status": "active"})
+    listing = db.select_one("listings", listing_id)
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found or update failed")
+
+    from datetime import datetime as _dt, timedelta as _td
+    now = _dt.utcnow()
+
+    # ── Recalculate expires_at from NOW (approval time) ──
+    # The user's purchased duration should start when the listing goes live,
+    # not when they paid. Look up the original plan to get duration_days.
+    new_expires_at = None
+    # Find the payment that purchased this listing to get the plan duration
+    payments = db.select("payments", filters={"user_id": listing["user_id"], "status": "success"})
+    if payments:
+        for p in sorted(payments, key=lambda x: x.get("created_at", ""), reverse=True):
+            meta = p.get("metadata", {})
+            if isinstance(meta, str):
+                import json
+                try:
+                    meta = json.loads(meta)
+                except:
+                    meta = {}
+            if meta.get("listing_id") == listing_id:
+                plan_id = meta.get("listing_plan_id")
+                if plan_id:
+                    plan = db.select_one("pricing_plans", plan_id)
+                    if plan:
+                        days = plan.get("duration_days", 30)
+                        new_expires_at = (now + _td(days=days)).isoformat()
+                break
+
+    listing_update = {"status": "active"}
+    if new_expires_at:
+        listing_update["expires_at"] = new_expires_at
+
+    updated = db.update("listings", listing_id, listing_update)
     if not updated:
         raise HTTPException(status_code=404, detail="Listing not found or update failed")
 
-    # Re-activate any boosts that were paused during a previous rejection
-    from datetime import datetime as _dt
-    now_iso = _dt.utcnow().isoformat()
+    # ── Recalculate promotion dates from NOW (approval time) ──
+    # Promotions created at payment time should start fresh at approval
+    now_iso = now.isoformat()
 
+    def pending_promo_query(table):
+        return (
+            table.select("id, plan_id")
+            .eq("listing_id", listing_id)
+            .eq("status", "pending")
+        )
+
+    pending_result = db.query("listing_promotions", pending_promo_query)
+    if pending_result.data:
+        for promo in pending_result.data:
+            promo_plan = db.select_one("pricing_plans", promo["plan_id"]) if promo.get("plan_id") else None
+            promo_days = promo_plan.get("duration_days", 7) if promo_plan else 7
+            promo_end = (now + _td(days=promo_days)).isoformat()
+            db.update("listing_promotions", promo["id"], {
+                "status": "active",
+                "start_date": now_iso,
+                "end_date": promo_end,
+            })
+        logger.info(f"Activated {len(pending_result.data)} pending promotion(s) for approved listing {listing_id}")
+
+    # Re-activate any boosts that were paused during a previous rejection
     def paused_promo_query(table):
         return (
             table.select("id")
@@ -705,10 +771,22 @@ def approve_listing(listing_id: str):
             db.update("listing_promotions", promo["id"], {"status": "active"})
         logger.info(f"Resumed {len(paused_result.data)} paused boost(s) for approved listing {listing_id}")
 
+    # ── Activate pending ad_banners with fresh expiration dates ──
+    pending_banners = db.select("ad_banners", filters={"listing_id": listing_id, "status": "pending_approval"})
+    if pending_banners:
+        for banner in pending_banners:
+            banner_plan = db.select_one("pricing_plans", banner["plan_id"]) if banner.get("plan_id") else None
+            banner_days = banner_plan.get("duration_days", 7) if banner_plan else 7
+            banner_expires = (now + _td(days=banner_days)).isoformat()
+            db.update("ad_banners", banner["id"], {
+                "status": "active",
+                "expires_at": banner_expires,
+            })
+        logger.info(f"Activated {len(pending_banners)} pending banner(s) for approved listing {listing_id}")
+
     # ── Push Notification: Listing approved → notify owner ──
     try:
         from services.notifications import notify_listing_approved
-        listing = db.select_one("listings", listing_id)
         if listing:
             notify_listing_approved(
                 user_id=listing["user_id"],

@@ -11,6 +11,7 @@ from utils.helpers import batch_listing_images, batch_locations, get_viewable_im
 from utils.logger import get_logger
 import math
 import random
+from datetime import datetime, timezone
 
 logger = get_logger(__name__)
 
@@ -34,12 +35,16 @@ def _get_promoted_listing_ids(
     of type 'product_listing' or 'top_offers'.
     Filtered by location and optionally by category.
     """
+    from datetime import datetime, timezone
+    now_iso = datetime.now(timezone.utc).isoformat()
+
     def query_func(table):
         query = (
             table.select("listing_id")
             .eq("status", "active")
             .not_.is_("listing_id", "null")
             .in_("type", ["product_listing", "top_offers"])
+            .or_(f"expires_at.is.null,expires_at.gt.{now_iso}")
         )
 
         # Location filter: match by wilayat or governorate or global (null)
@@ -435,11 +440,14 @@ def get_location_offers(
     # Use skip if provided, else use page
     actual_skip = skip if skip > 0 else page * limit
 
+    now_iso = datetime.now(timezone.utc).isoformat()
+
     def query_func(table):
         query = (
             table.select("*, listings(*, categories(*), locations(*))")
             .eq("status", "active")
             .in_("type", ["offers", "top_offers"])
+            .or_(f"expires_at.is.null,expires_at.gt.{now_iso}")
         )
 
         # Location: match wilayat, governorate, or global (no location set) for top_offers
@@ -466,6 +474,7 @@ def get_location_offers(
             table.select("id", count="exact")
             .eq("status", "active")
             .in_("type", ["offers", "top_offers"])
+            .or_(f"expires_at.is.null,expires_at.gt.{now_iso}")
         )
         if wilayat_name and gov_id:
             query = query.or_(

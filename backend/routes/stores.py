@@ -439,6 +439,12 @@ def get_store_listings(
                 query = query.eq("status", "active")
             # if is_owner and no status: returns everything for that store (all statuses)
 
+        # Exclude expired listings for public viewers
+        if not is_owner:
+            from datetime import datetime
+            now_iso = datetime.utcnow().isoformat()
+            query = query.or_(f"expires_at.is.null,expires_at.gt.{now_iso}")
+
         return (
             query
             .range(skip, skip + limit - 1)

@@ -49,7 +49,9 @@ def enrich_banners(banners):
                 list_of_images = b_imgs if isinstance(b_imgs, list) else [b_imgs]
             elif b.get("image_url"):
                 list_of_images = [b["image_url"]]
-                
+        
+        b["images"] = list_of_images
+        
         # Always make sure image_url is set to the first image if not provided
         if not b.get("image_url") and list_of_images:
             b["image_url"] = list_of_images[0]
@@ -220,8 +222,10 @@ def list_active_banners(
     """
     Public endpoint to fetch active banners for display in the app.
     """
+    now_iso = datetime.utcnow().isoformat()
     def query_func(table):
         query = table.select("*").eq("status", "active")
+        query = query.or_(f"expires_at.is.null,expires_at.gt.{now_iso}")
         if type:
             query = query.eq("type", type)
         return query.limit(limit).order("created_at", desc=True)
@@ -239,10 +243,12 @@ def get_home_banners(
     Returns only admin-created active banners (no listing_id),
     ordered by newest first. Frontend can display as a sliding carousel.
     """
+    now_iso = datetime.utcnow().isoformat()
     def query_func(table):
         return (
             table.select("*")
             .eq("status", "active")
+            .or_(f"expires_at.is.null,expires_at.gt.{now_iso}")
             .is_("listing_id", "null")   # admin banners only (no listing_id)
             .limit(limit)
             .order("created_at", desc=True)
@@ -259,10 +265,12 @@ def get_featured_banners():
     Returns all active admin-created banners (no listing_id).
     Frontend displays these as a carousel/slider.
     """
+    now_iso = datetime.utcnow().isoformat()
     def query_func(table):
         return (
             table.select("*")
             .eq("status", "active")
+            .or_(f"expires_at.is.null,expires_at.gt.{now_iso}")
             .is_("listing_id", "null")  # admin banners only
             .order("created_at", desc=True)
         )
@@ -277,10 +285,12 @@ def get_offers():
     Public — no auth required.
     Returns all active offer-type admin banners (multiple images each).
     """
+    now_iso = datetime.utcnow().isoformat()
     def query_func(table):
         return (
             table.select("*")
             .eq("status", "active")
+            .or_(f"expires_at.is.null,expires_at.gt.{now_iso}")
             .eq("type", "offers")
             .order("created_at", desc=True)
         )
