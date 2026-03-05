@@ -705,6 +705,19 @@ def approve_listing(listing_id: str):
             db.update("listing_promotions", promo["id"], {"status": "active"})
         logger.info(f"Resumed {len(paused_result.data)} paused boost(s) for approved listing {listing_id}")
 
+    # ── Push Notification: Listing approved → notify owner ──
+    try:
+        from services.notifications import notify_listing_approved
+        listing = db.select_one("listings", listing_id)
+        if listing:
+            notify_listing_approved(
+                user_id=listing["user_id"],
+                listing_id=listing_id,
+                listing_title=listing.get("title", "Your listing"),
+            )
+    except Exception as notif_err:
+        logger.warning(f"Listing approved notification failed (non-blocking): {notif_err}")
+
     return updated
 
 @admin_router.put("/{listing_id}/reject")

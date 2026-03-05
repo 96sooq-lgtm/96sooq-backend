@@ -115,6 +115,18 @@ async def activate_bundle(payment_id: str, metadata: dict, user_id: str):
             db.update("listings", listing_id, listing_update)
             logger.info(f"Listing {listing_id} moved to pending_approval (expires_at={listing_expires_at})")
 
+            # ── Push Notification: Payment success → listing under review ──
+            try:
+                from services.notifications import notify_payment_success
+                listing_data = db.select_one("listings", listing_id)
+                listing_title = listing_data.get("title", "Your listing") if listing_data else "Your listing"
+                payment_record = db.select_one("payments", payment_id)
+                amount = payment_record.get("amount", 0) if payment_record else 0
+                currency = payment_record.get("currency", "OMR") if payment_record else "OMR"
+                notify_payment_success(user_id, listing_id, listing_title, amount, currency)
+            except Exception as notif_err:
+                logger.warning(f"Payment notification failed (non-blocking): {notif_err}")
+
         # 2. Activate Ad Boost — extend existing if same plan already active, else create
         if ad_plan_id:
             ad_duration_days = metadata.get("ad_duration_days", 1)

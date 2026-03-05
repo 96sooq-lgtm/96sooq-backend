@@ -367,6 +367,24 @@ def send_message(
     except Exception as e:
         logger.warning(f"Realtime broadcast failed: {e} (DB insert still succeeded)")
 
+    # ──────────────────────────────────────────────────────────────────
+    # PUSH NOTIFICATION — notify the receiver (buyer or seller)
+    # ──────────────────────────────────────────────────────────────────
+    try:
+        from services.notifications import notify_new_message
+        receiver_id = conv["seller_id"] if conv["buyer_id"] == user_id else conv["buyer_id"]
+        sender_display = message.get("sender_name") or message.get("store_name") or "Someone"
+        preview = payload.content or "[Media]"
+        notify_new_message(
+            receiver_id=receiver_id,
+            sender_name=sender_display,
+            conversation_id=conversation_id,
+            listing_id=conv.get("listing_id", ""),
+            message_preview=preview,
+        )
+    except Exception as notif_err:
+        logger.warning(f"Chat push notification failed (non-blocking): {notif_err}")
+
     logger.info(f"Message sent via REST: conv={conversation_id}, sender={user_id}")
     return message
 

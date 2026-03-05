@@ -28,6 +28,10 @@ wheels/
 .env.local
 .env.*.local
 
+# Firebase
+firebase-service-account.json
+*-firebase-adminsdk-*.json
+
 # IDEs
 .vscode/
 .idea/
