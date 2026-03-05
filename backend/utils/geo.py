@@ -170,6 +170,16 @@ def resolve_location_by_name(
             ):
                 matched_gov = g
                 break
+        
+        # Fallback: fuzzy match (e.g. "Muscat" matches "Muscat Governorate")
+        if not matched_gov:
+            for g in governorates:
+                if (
+                    gov_name_lower in g.get("name_en", "").lower()
+                    or governorate_name.strip() in g.get("name_ar", "").strip()
+                ):
+                    matched_gov = g
+                    break
 
     # Try to match wilayat and derive governorate from it
     if wilayat_name:

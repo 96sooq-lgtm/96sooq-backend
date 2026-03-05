@@ -8,14 +8,91 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 from datetime import datetime, timedelta
 
+from utils.helpers import batch_listing_images, batch_stores
+from db.supabase_client import db
+
 def enrich_banners(banners):
+    listing_ids = list({b["listing_id"] for b in banners if b.get("listing_id")})
+    images_map = batch_listing_images(listing_ids) if listing_ids else {}
+
+    # 1. Fetch listing owners (stores/users) to get mobile numbers and store names
+    listing_owners_map = {}
+    if listing_ids:
+        def l_query(table):
+            return table.select("id, store_id, user_id").in_("id", listing_ids)
+        listing_owners_res = db.query("listings", l_query)
+        if listing_owners_res.data:
+            listing_owners_map = {l["id"]: l for l in listing_owners_res.data}
+
+    # Gather store_ids and user_ids
+    store_ids = list({l["store_id"] for l in listing_owners_map.values() if l.get("store_id")})
+    user_ids = list({l["user_id"] for l in listing_owners_map.values() if l.get("user_id")})
+    b_user_ids = list({b["user_id"] for b in banners if b.get("user_id")})
+    user_ids = list(set(user_ids + b_user_ids))
+
+    stores_map = batch_stores(store_ids)
+    users_res = db.select_in("app_users", "id", user_ids) if user_ids else []
+    users_map = {u["id"]: u for u in users_res}
+
     for b in banners:
+        is_admin_offer = b.get("type") == "offers"
         b["creator_role"] = "user" if b.get("user_id") else "admin"
+        b["is_admin_offer"] = is_admin_offer
+        
+        # Unify images key
+        list_of_images = []
+        if b.get("listing_id"):
+            list_of_images = images_map.get(b["listing_id"], [])
+        else:
+            b_imgs = b.get("images")
+            if b_imgs:
+                list_of_images = b_imgs if isinstance(b_imgs, list) else [b_imgs]
+            elif b.get("image_url"):
+                list_of_images = [b["image_url"]]
+        
+        b["images"] = list_of_images
+        
+        # Always make sure image_url is set to the first image if not provided
+        if not b.get("image_url") and list_of_images:
+            b["image_url"] = list_of_images[0]
+
+        # Details Extractions
+        mobile_number = b.get("whatsapp_number")
+        store_name = None
+        store_logo = None
+        store_id = None
+        listing_id = b.get("listing_id")
+        
+        if not mobile_number and listing_id and listing_id in listing_owners_map:
+            l_owner = listing_owners_map[listing_id]
+            if l_owner.get("store_id"):
+                store = stores_map.get(l_owner["store_id"])
+                if store:
+                    mobile_number = store.get("store_number")
+                    store_name = store.get("name_en") or store.get("name")
+                    store_logo = store.get("logo")
+                    store_id = store.get("id")
+            
+            if not mobile_number and l_owner.get("user_id"):
+                user = users_map.get(l_owner["user_id"])
+                if user:
+                    mobile_number = user.get("phone_number")
+        
+        if not mobile_number and is_admin_offer and b.get("user_id"):
+            u = users_map.get(b["user_id"])
+            if u:
+                mobile_number = u.get("phone_number")
+
+        b["whatsapp_number"] = mobile_number if is_admin_offer else None
+        b["store_mobile_number"] = mobile_number if not is_admin_offer else None
+        b["store_name"] = store_name
+        b["store_logo"] = store_logo
+        b["store_id"] = store_id
+            
     return banners
 
 def enrich_banner(banner):
-    banner["creator_role"] = "user" if banner.get("user_id") else "admin"
-    return banner
+    return enrich_banners([banner])[0]
 
 # Public/User Router
 router = APIRouter(
@@ -235,6 +312,7 @@ def create_banner_admin(
             "image_url": payload.image_url,
             "images": payload.images or [],
             "link_url": payload.link_url,
+            "whatsapp_number": payload.whatsapp_number,
             "description": payload.description,
             "status": "active",
             "duration_days": payload.duration_days,

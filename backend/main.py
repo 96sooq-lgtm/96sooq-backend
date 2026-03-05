@@ -132,11 +132,19 @@ app.include_router(feed_router)
 
 
 @app.get("/feed")
-@app.get("/feed/")
-async def feed_redirect(request: Request):
+@app.get("/feed/{path:path}")
+async def feed_redirect(request: Request, path: str = ""):
     from fastapi.responses import RedirectResponse
     query_params = str(request.query_params)
-    url = f"/api/feed/?{query_params}" if query_params else "/api/feed/"
+    
+    # Construct the target path, ensuring it redirects to /api/feed/...
+    target_path = f"/api/feed/{path}" if path else "/api/feed/"
+    
+    if query_params:
+        url = f"{target_path}?{query_params}"
+    else:
+        url = target_path
+        
     return RedirectResponse(url=url)
 
 

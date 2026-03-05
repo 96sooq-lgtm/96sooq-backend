@@ -339,6 +339,7 @@ class AdminBannerCreate(BaseModel):
     image_url: Optional[str] = None   # single image (for carousel type)
     images: Optional[List[str]] = []  # multiple images (for offers type)
     link_url: Optional[str] = None
+    whatsapp_number: Optional[str] = None
     description: Optional[str] = None
 
 # Keep for backward-compat (used internally only)
@@ -349,6 +350,7 @@ class AdBannerCreate(BaseModel):
     type: str
     image_url: Optional[str] = None
     link_url: Optional[str] = None
+    whatsapp_number: Optional[str] = None
     plan_id: Optional[str] = None
     listing_id: Optional[str] = None
 
@@ -358,7 +360,9 @@ class AdBannerUpdate(BaseModel):
     description: Optional[str] = None
     type: Optional[str] = None
     image_url: Optional[str] = None
+    images: Optional[List[str]] = None
     link_url: Optional[str] = None
+    whatsapp_number: Optional[str] = None
     duration_days: Optional[int] = None
     status: Optional[str] = None  # pending_approval, active, rejected, expired
 
@@ -373,6 +377,7 @@ class AdBannerOut(BaseModel):
     image_url: Optional[str] = None
     images: Optional[List[str]] = []  # multi-image for offers type
     link_url: Optional[str] = None
+    whatsapp_number: Optional[str] = None
     status: str
     plan_id: Optional[str] = None
     listing_id: Optional[str] = None
@@ -381,6 +386,13 @@ class AdBannerOut(BaseModel):
     expires_at: Optional[datetime] = None
     created_at: Optional[str] = None
     creator_role: Optional[str] = "admin"  # "admin" or "user"
+    
+    # Enrichments
+    is_admin_offer: Optional[bool] = None
+    store_mobile_number: Optional[str] = None
+    store_name: Optional[str] = None
+    store_logo: Optional[str] = None
+    store_id: Optional[str] = None
 
 
 # ----------------------------------------------------------------

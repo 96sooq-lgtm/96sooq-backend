@@ -481,11 +481,97 @@ def get_location_offers(
     total = count_result.count if count_result.count is not None else 0
 
     result = db.query("ad_banners", query_func)
-    offers = result.data if result.data else []
+    banners = result.data if result.data else []
 
-    # Add key to distinguish admin offers from user boosts
-    for offer in offers:
-        offer["is_admin_offer"] = offer.get("type") == "offers"
+    # 1. Gather IDs for batch fetching
+    listing_ids = list({b["listing_id"] for b in banners if b.get("listing_id")})
+    
+    # Batch fetch listing images
+    images_map = batch_listing_images(listing_ids)
+    
+    # 2. Batch fetch listing owners (stores/users) to get mobile numbers
+    listing_owners_map = {}
+    if listing_ids:
+        def l_query(table):
+            return table.select("id, store_id, user_id").in_("id", listing_ids)
+        listing_owners_res = db.query("listings", l_query)
+        if listing_owners_res.data:
+            listing_owners_map = {l["id"]: l for l in listing_owners_res.data}
+
+    store_ids = list({l["store_id"] for l in listing_owners_map.values() if l.get("store_id")})
+    user_ids = list({l["user_id"] for l in listing_owners_map.values() if l.get("user_id")})
+    # Also include banner users if any
+    b_user_ids = list({b["user_id"] for b in banners if b.get("user_id")})
+    user_ids = list(set(user_ids + b_user_ids))
+
+    stores_map = batch_stores(store_ids)
+    users_res = db.select_in("app_users", "id", user_ids) if user_ids else []
+    users_map = {u["id"]: u for u in users_res}
+
+    # 3. Process each offer
+    offers = []
+    for b in banners:
+        is_admin_offer = b.get("type") == "offers"
+        listing_id = b.get("listing_id")
+        
+        # Unified Images key
+        list_of_images = []
+        if listing_id:
+            # Listing-based images
+            list_of_images = images_map.get(listing_id, [])
+        else:
+            # Admin-based images (from ad_banners table)
+            b_imgs = b.get("images")
+            if b_imgs:
+                list_of_images = b_imgs if isinstance(b_imgs, list) else [b_imgs]
+            elif b.get("image_url"):
+                list_of_images = [b["image_url"]]
+
+        # Determine Mobile/WhatsApp Number and Store Details
+        # Admin offers can have a specific whatsapp_number
+        mobile_number = b.get("whatsapp_number")
+        store_name = None
+        store_logo = None
+        store_id = None
+        
+        # Fallback to listing owner if it's a boosted listing
+        if not mobile_number and listing_id and listing_id in listing_owners_map:
+            l_owner = listing_owners_map[listing_id]
+            if l_owner.get("store_id"):
+                store = stores_map.get(l_owner["store_id"])
+                if store:
+                    mobile_number = store.get("store_number")
+                    store_name = store.get("name_en") or store.get("name")
+                    store_logo = store.get("logo")
+                    store_id = store.get("id")
+            
+            if not mobile_number and l_owner.get("user_id"):
+                user = users_map.get(l_owner["user_id"])
+                if user:
+                    mobile_number = user.get("phone_number")
+        
+        # Final fallback for admin offers if no whatsapp_number set explicitly
+        if not mobile_number and is_admin_offer and b.get("user_id"):
+            u = users_map.get(b["user_id"])
+            if u:
+                mobile_number = u.get("phone_number")
+
+        offers.append({
+            "id": b["id"],
+            "listing_id": listing_id,
+            "name": b.get("name"),
+            "image_url": b.get("image_url") or (list_of_images[0] if list_of_images else None),
+            "images": list_of_images, # Unified key for multiple images
+            "link_url": b.get("link_url") if is_admin_offer else None,
+            "whatsapp_number": mobile_number if is_admin_offer else None,
+            "store_mobile_number": mobile_number if not is_admin_offer else None,
+            "store_name": store_name,
+            "store_logo": store_logo,
+            "store_id": store_id,
+            "is_admin_offer": is_admin_offer,
+            "description": b.get("description"),
+            "created_at": b.get("created_at")
+        })
 
     pages = math.ceil(total / limit) if total > 0 else 0
 
@@ -500,6 +586,7 @@ def get_location_offers(
         "limit": limit,
         "pages": pages,
     }
+
 
 
 @router.get("/nearby-stores")
