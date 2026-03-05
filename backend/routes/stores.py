@@ -119,11 +119,8 @@ def list_stores(
     my_stores: bool = Query(False, description="If true, return only the authenticated user's stores (requires Bearer token)"),
     status: Optional[str] = Query(None, description="Filter by status — only applies when fetching own stores"),
     location_id: Optional[str] = Query(None, description="Filter by governorate or wilayat UUID. If null, returns all stores."),
-    governorate: Optional[str] = Query(None, description="Governorate name (en or ar) — alternative to location_id"),
-    wilayat_name: Optional[str] = Query(None, alias="wilayat", description="Wilayat name (en or ar) — alternative to location_id"),
     user_id: Optional[str] = Query(None, description="If 'current', return the authenticated user's stores (all statuses)."),
-    min_rating: Optional[float] = Query(None, description="Minimum average rating"),
-    search: Optional[str] = Query(None, description="Search by store name (English or Arabic, partial match)")
+    min_rating: Optional[float] = Query(None, description="Minimum average rating")
 ):
     """
     List stores.
@@ -155,14 +152,6 @@ def list_stores(
             governorate_filter = location_id          # filter by UUID column
         elif location.get("type") in ("city", "district"):
             wilayat_filter = location.get("name_en")  # filter by text name column
-    elif governorate or wilayat_name:
-        # Name-based location resolution (consistent with feed endpoints)
-        from utils.geo import resolve_location_by_name
-        loc = resolve_location_by_name(governorate_name=governorate, wilayat_name=wilayat_name)
-        if loc.get("wilayat_name"):
-            wilayat_filter = loc["wilayat_name"]
-        elif loc.get("gov_id"):
-            governorate_filter = loc["gov_id"]
 
     def query_func(table):
         query = table.select("id, name, name_ar, status, logo")
@@ -177,8 +166,6 @@ def list_stores(
             query = query.eq("governorate_id", governorate_filter)
         if wilayat_filter:
             query = query.eq("wilayat", wilayat_filter)
-        if search:
-            query = query.or_(f"name.ilike.%{search}%,name_ar.ilike.%{search}%")
 
         if min_rating is None:
             query = query.range(skip, skip + limit - 1)
@@ -478,20 +465,13 @@ def get_store_listings(
     if listings:
         listing_ids = [l["id"] for l in listings]
         from utils.helpers import batch_listing_images, batch_locations, batch_categories, batch_listing_promotions
-        
         images_map = batch_listing_images(listing_ids)
         promotions_map = batch_listing_promotions(listing_ids)
         
         location_ids = list({l["location_id"] for l in listings if l.get("location_id")})
         locations_map = batch_locations(location_ids)
         
-        category_ids = list({l["category_id"] for l in listings if l.get("category_id")})
-        categories_map = batch_categories(category_ids)
-        
-        parent_cat_ids = list({cat.get("parent_id") for cat in categories_map.values() if cat.get("parent_id")})
-        parent_categories_map = batch_categories(parent_cat_ids) if parent_cat_ids else {}
-        
-        # Batch fetch Wilayat details (cities)
+        # Batch fetch Wilayat details (cities) - only names
         places = list({l["place"] for l in listings if l.get("place")})
         wilayats_map = {}
         if places and location_ids:
@@ -505,29 +485,17 @@ def get_store_listings(
         for listing in listings:
             listing["images"] = images_map.get(listing["id"], [])
             listing["promotions"] = promotions_map.get(listing["id"], [])
+            listing["is_promoted"] = len(listing["promotions"]) > 0
             listing["seller_type"] = "store"
             listing["store_name"] = store.get("name_en") or store.get("name")
             listing["store_logo"] = store.get("logo")
             listing["store_id"] = store["id"]
             listing["seller_phone_number"] = seller_phone
             
-            # Categories
-            cat = categories_map.get(listing.get("category_id"))
-            if cat:
-                listing["category_name_en"] = cat.get("name_en")
-                listing["category_name_ar"] = cat.get("name_ar")
-                p_id = cat.get("parent_id")
-                if p_id:
-                    p_cat = parent_categories_map.get(p_id)
-                    if p_cat:
-                        listing["parent_category_name_en"] = p_cat.get("name_en")
-                        listing["parent_category_name_ar"] = p_cat.get("name_ar")
-
             # Locations
             if listing.get("location_id"):
                 loc = locations_map.get(listing["location_id"])
                 if loc:
-                    listing["location_details"] = loc
                     listing["location_name_en"] = loc.get("name_en")
                     listing["location_name_ar"] = loc.get("name_ar")
             
@@ -537,9 +505,6 @@ def get_store_listings(
                 if wilayat:
                     listing["place_name_en"] = wilayat.get("name_en")
                     listing["place_name_ar"] = wilayat.get("name_ar")
-                    listing["wilayat_id"] = wilayat.get("id")
-                    listing["wilayat_name_en"] = wilayat.get("name_en")
-                    listing["wilayat_name_ar"] = wilayat.get("name_ar")
 
     return listings
 
