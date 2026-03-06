@@ -20,6 +20,10 @@ router = APIRouter(
     tags=["feed"]
 )
 
+# Constants for latest picks
+DEFAULT_LIMIT = 20
+MAX_LIMIT = 50
+
 PROMOTED_SLOTS_PER_PAGE = 3
 MIN_RESULTS_THRESHOLD = 5  # Expand radius if fewer than this
 
@@ -94,6 +98,7 @@ def _fetch_organic_listings(
     exclude_ids: Optional[List[str]] = None,
     skip: int = 0,
     limit: int = 20,
+    columns: Optional[str] = None
 ) -> tuple:
     """
     Fetch organic (non-promoted) listings with location filters.
@@ -139,14 +144,17 @@ def _fetch_organic_listings(
     fetch_limit = limit + len(exclude_set) + 10
 
     def query_func(table):
+        # Default columns if not provided
+        selected_cols = columns or (
+            "*, listing_images(*), "
+            "stores(*, locations(*)), "
+            "app_users!inner(id, name, profile_picture, phone_number, is_active), "
+            "categories(*), locations(*), listing_promotions(*, pricing_plans(*))"
+        )
+        
         # Join app_users to filter locked accounts at the DB level
         query = (
-            table.select(
-                "*, listing_images(*), "
-                "stores(*, locations(*)), "
-                "app_users!inner(id, name, profile_picture, phone_number, is_active), "
-                "categories(*), locations(*), listing_promotions(*, pricing_plans(*))"
-            )
+            table.select(selected_cols)
             .eq("status", "active")
             .eq("app_users.is_active", True)  # exclude locked-user listings
             .or_(f"expires_at.is.null,expires_at.gt.{now_iso}")
@@ -421,6 +429,106 @@ def get_feed(
         "page": page,
         "limit": limit,
         "pages": pages,
+    }
+
+
+@router.get("/latest-picks")
+def get_latest_picks(
+    location_name: Optional[str] = Query(None, description="Governorate or Wilayat name"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(20, ge=1, le=50),
+    current_user: Optional[dict] = Depends(get_optional_current_customer)
+):
+    """
+    Returns latest listings filtered by location name.
+    Ignores categories and other filters.
+    """
+    # 1. Resolve location
+    wilayat_name = None
+    gov_id = None
+    
+    if location_name:
+        loc = resolve_location_by_name(governorate_name=location_name, wilayat_name=location_name)
+        wilayat_name = loc["wilayat_name"]
+        gov_id = loc["gov_id"]
+
+    # 2. Fetch slim organic listings
+    # We select only the fields requested by the user for performance
+    slim_columns = (
+        "id, user_id, store_id, location_id, place, created_at, "
+        "listing_images(image_url, is_main, display_order), "
+        "stores(id, name, store_number), "
+        "locations(id, name_en, name_ar), "
+        "app_users(id, phone_number)"
+    )
+    
+    listings, total = _fetch_organic_listings(
+        place_names=[wilayat_name] if wilayat_name else None,
+        location_ids=[gov_id] if gov_id and not wilayat_name else None,
+        skip=skip,
+        limit=limit,
+        columns=slim_columns
+    )
+
+    # 3. Format strictly as requested
+    results = []
+    if listings:
+        # Resolve Wilayat details for all listings
+        wilayats_map = get_wilayats_map(listings)
+
+        for l in listings:
+            # Base data
+            res = {
+                "listing_id": l["id"],
+                "created_at": l["created_at"]
+            }
+
+            # Images
+            imgs = l.get("listing_images") or []
+            sorted_imgs = sorted(imgs, key=lambda x: (not x.get("is_main", False), x.get("display_order", 0)))
+            res["images"] = [get_viewable_image_url(img.get("image_url")) for img in sorted_imgs]
+
+            # Seller logic: If store, show store info. Else user_id.
+            store = l.get("stores")
+            if store and isinstance(store, dict):
+                res["store_id"] = store.get("id")
+                res["store_name"] = store.get("name")
+                # Ensure it's a string not a list/dict
+                res["mobile_number"] = store.get("store_number")
+                res["seller_type"] = "store"
+            else:
+                res["user_id"] = l["user_id"]
+                res["seller_type"] = "individual"
+                # For compatibility, also include mobile number if we joined app_users
+                user = l.get("app_users")
+                if user and isinstance(user, dict):
+                    res["mobile_number"] = user.get("phone_number")
+
+            # Governorate details
+            loc_data = l.get("locations")
+            if loc_data and isinstance(loc_data, dict):
+                res["governorate_id"] = loc_data.get("id")
+                res["governorate_name"] = loc_data.get("name_en")
+                res["governorate_name_ar"] = loc_data.get("name_ar")
+            
+            # Wilayat details (from resolved map)
+            if l.get("place") and l.get("location_id"):
+                wilayat = wilayats_map.get((l["place"], l["location_id"]))
+                if wilayat:
+                    res["wilayat_id"] = wilayat.get("id")
+                    res["wilayat_name"] = wilayat.get("name_en")
+                    res["wilayat_name_ar"] = wilayat.get("name_ar")
+
+            results.append(res)
+
+    pages = math.ceil(total / limit) if total > 0 else 0
+
+    return {
+        "listings": results,
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+        "pages": pages
     }
 
 

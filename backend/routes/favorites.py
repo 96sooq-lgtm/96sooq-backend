@@ -37,20 +37,35 @@ def toggle_favorite(
         "listing_id": listing_id,
     })
 
+    new_count = 0
     if existing:
         # Already favorited → remove
         db.delete("favorites", existing[0]["id"])
-        return {"is_favorited": False, "listing_id": listing_id}
+        is_fav = False
+    else:
+        # Not favorited → add
+        fav = db.insert("favorites", {
+            "user_id": user_id,
+            "listing_id": listing_id,
+        })
+        if not fav:
+            raise HTTPException(status_code=500, detail="Failed to add favorite")
+        is_fav = True
 
-    # Not favorited → add
-    fav = db.insert("favorites", {
-        "user_id": user_id,
+    # Update persistent counter in listings table
+    def count_query(table):
+        return table.select("id", count="exact").eq("listing_id", listing_id)
+    
+    res = db.query("favorites", count_query)
+    new_count = res.count if res.count is not None else 0
+    
+    db.update("listings", listing_id, {"favorites_count": new_count})
+
+    return {
+        "is_favorited": is_fav, 
         "listing_id": listing_id,
-    })
-    if not fav:
-        raise HTTPException(status_code=500, detail="Failed to add favorite")
-
-    return {"is_favorited": True, "listing_id": listing_id}
+        "favorites_count": new_count
+    }
 
 
 @router.delete("/{listing_id}", status_code=status.HTTP_200_OK)
@@ -72,7 +87,20 @@ def remove_favorite(
         raise HTTPException(status_code=404, detail="Favorite not found")
 
     db.delete("favorites", existing[0]["id"])
-    return {"is_favorited": False, "listing_id": listing_id}
+    
+    # Update count
+    def count_query(table):
+        return table.select("id", count="exact").eq("listing_id", listing_id)
+    
+    res = db.query("favorites", count_query)
+    new_count = res.count if res.count is not None else 0
+    db.update("listings", listing_id, {"favorites_count": new_count})
+
+    return {
+        "is_favorited": False, 
+        "listing_id": listing_id,
+        "favorites_count": new_count
+    }
 
 
 @router.get("/", response_model=schemas.FavoriteListResponse)
@@ -139,6 +167,7 @@ def list_favorites(
                 listing["images"] = images_map.get(lid, [])
                 listing["favorited_at"] = fav_dates.get(lid)
                 listing["is_favorite"] = True
+                listing["favorites_count"] = listing.get("favorites_count", 0)
                 
                 if listing.get("location_id"):
                     loc = locations_map.get(listing["location_id"])

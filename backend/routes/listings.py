@@ -118,11 +118,14 @@ def format_joined_listing(listing: dict, wilayats_map: dict, fav_set: set, fav_c
     
     # Favorites
     listing["is_favorite"] = listing.get("id") in fav_set
-    if fav_counts:
+    # Use the column value directly from the listing if available, 
+    # otherwise fallback to fav_counts (which is now deprecated)
+    if listing.get("favorites_count") is not None:
+        pass # Already has the correct count from DB join
+    elif fav_counts:
         listing["favorites_count"] = fav_counts.get(listing.get("id"), 0)
     else:
-        # If not provided, default to 0. Individual fetchers should hydrate this.
-        listing["favorites_count"] = listing.get("favorites_count", 0)
+        listing["favorites_count"] = 0
 
     # Locations
     loc = listing.get("locations")
@@ -517,12 +520,9 @@ def get_listing(listing_id: str, current_user: Optional[dict] = Depends(get_opti
         except (ValueError, TypeError):
             pass  # If parsing fails, allow access
             
-    # 8. Favorite count for single listing
-    def fav_count_query(table):
-        return table.select("id", count="exact").eq("listing_id", listing_id)
-    
-    fav_res = db.query("favorites", fav_count_query)
-    listing["favorites_count"] = fav_res.count if fav_res.count is not None else 0
+    # 8. Favorite count
+    # Now retrieved via the persistent column in the listings table
+    listing["favorites_count"] = listing.get("favorites_count", 0)
         
     return listing
 
