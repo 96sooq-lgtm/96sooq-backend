@@ -306,6 +306,7 @@ class ListingOut(BaseModel):
     images: Optional[List[str]] = []
     promotions: Optional[List[dict]] = []
     is_promoted: bool = False
+    favorites_count: int = 0
 
 class FavoriteListingOut(ListingOut):
     favorited_at: Optional[str] = None

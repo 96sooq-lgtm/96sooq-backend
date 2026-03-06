@@ -201,6 +201,26 @@ def get_favorites_set(current_user: dict | None) -> set:
         fav_set = {f["listing_id"] for f in favs}
     return fav_set
 
+def batch_favorites_count(listing_ids: List[str]) -> Dict[str, int]:
+    """
+    Fetch favorite counts for multiple listings in a single DB query.
+    Returns a dict: { listing_id: count }
+    """
+    if not listing_ids:
+        return {}
+    
+    # Supabase doesn't support grouping in select directly via REST,
+    # so we fetch all favorites for these listings and count locally.
+    # For large datasets, this should be a DB view or a Postgres function.
+    favs = db.select_in("favorites", "listing_id", listing_ids, columns="listing_id")
+    
+    counts = {lid: 0 for lid in listing_ids}
+    for f in favs:
+        lid = f["listing_id"]
+        counts[lid] = counts.get(lid, 0) + 1
+        
+    return counts
+
 def format_joined_listing(listing: dict, wilayats_map: dict, fav_set: set) -> dict:
     from datetime import datetime
     now_str = datetime.utcnow().isoformat()

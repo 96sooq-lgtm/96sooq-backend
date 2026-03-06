@@ -7,7 +7,7 @@ from typing import Optional, List
 from db.supabase_client import db
 from utils.auth import get_optional_current_customer
 from utils.geo import resolve_location, resolve_location_by_name, get_wilayat_names_in_governorate, get_wilayats_for_governorates
-from utils.helpers import batch_listing_images, batch_locations, get_viewable_image_url, batch_stores, format_joined_listing, get_wilayats_map, get_favorites_set, batch_listing_promotions
+from utils.helpers import batch_listing_images, batch_locations, get_viewable_image_url, batch_stores, format_joined_listing, get_wilayats_map, get_favorites_set, batch_listing_promotions, batch_favorites_count
 from utils.logger import get_logger
 import math
 import random
@@ -339,6 +339,9 @@ def get_feed(
         users_res = db.select_in("app_users", "id", user_ids) if user_ids else []
         users_map = {u["id"]: u for u in users_res}
         
+        # Batch fetch favorite counts
+        fav_counts_map = batch_favorites_count(listing_ids)
+        
         fav_set = set()
         if current_user:
             favs = db.select("favorites", filters={"user_id": current_user["id"]})
@@ -358,6 +361,7 @@ def get_feed(
         for listing in all_listings:
             listing["images"] = images_map.get(listing["id"], [])
             listing["is_favorite"] = listing["id"] in fav_set
+            listing["favorites_count"] = fav_counts_map.get(listing["id"], 0)
             
             if listing.get("location_id"):
                 loc = locations_map.get(listing["location_id"])
@@ -951,6 +955,7 @@ def get_category_feed(
         for l in all_listings:
             l["images"] = images_map.get(l["id"], [])
             l["is_favorite"] = l["id"] in fav_set
+            l["favorites_count"] = fav_counts_map.get(l["id"], 0)
             if l.get("location_id"):
                 loc = locations_map.get(l["location_id"])
                 if loc:

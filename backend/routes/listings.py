@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, status, Depends, Query
 from models import schemas
 from db.supabase_client import db
 from utils.auth import get_current_customer, get_current_admin, get_optional_current_customer
-from utils.helpers import get_viewable_image_url, batch_listing_images, batch_locations, batch_stores, batch_categories
+from utils.helpers import batch_listing_images, batch_locations, batch_stores, batch_categories, batch_favorites_count
 from utils.logger import get_logger
 from typing import List, Optional
 from datetime import datetime
@@ -78,7 +78,7 @@ def get_favorites_set(current_user: Optional[dict]) -> set:
         fav_set = {f["listing_id"] for f in favs}
     return fav_set
 
-def format_joined_listing(listing: dict, wilayats_map: dict, fav_set: set) -> dict:
+def format_joined_listing(listing: dict, wilayats_map: dict, fav_set: set, fav_counts: dict = None) -> dict:
     from datetime import datetime
     now_str = datetime.utcnow().isoformat()
     from utils.helpers import get_viewable_image_url
@@ -118,6 +118,11 @@ def format_joined_listing(listing: dict, wilayats_map: dict, fav_set: set) -> di
     
     # Favorites
     listing["is_favorite"] = listing.get("id") in fav_set
+    if fav_counts:
+        listing["favorites_count"] = fav_counts.get(listing.get("id"), 0)
+    else:
+        # If not provided, default to 0. Individual fetchers should hydrate this.
+        listing["favorites_count"] = listing.get("favorites_count", 0)
 
     # Locations
     loc = listing.get("locations")
@@ -279,6 +284,7 @@ def create_listing(
     listing["user_name"] = current_user.get("name")
     listing["user_profile_picture"] = current_user.get("profile_picture")
     listing["is_favorite"] = False
+    listing["favorites_count"] = 0
 
     # Inject location names for response
     if location_id:
@@ -362,8 +368,10 @@ def list_listings(
     if listings:
         wilayats_map = get_wilayats_map(listings)
         fav_set = get_favorites_set(current_user)
+        listing_ids = [l["id"] for l in listings]
+        fav_counts = batch_favorites_count(listing_ids)
         for i in range(len(listings)):
-            listings[i] = format_joined_listing(listings[i], wilayats_map, fav_set)
+            listings[i] = format_joined_listing(listings[i], wilayats_map, fav_set, fav_counts)
 
     return listings
 
@@ -393,8 +401,10 @@ def get_my_listings(
     if listings:
         wilayats_map = get_wilayats_map(listings)
         fav_set = get_favorites_set(current_user)
+        listing_ids = [l["id"] for l in listings]
+        fav_counts = batch_favorites_count(listing_ids)
         for i in range(len(listings)):
-            listings[i] = format_joined_listing(listings[i], wilayats_map, fav_set)
+            listings[i] = format_joined_listing(listings[i], wilayats_map, fav_set, fav_counts)
 
     return listings
 
@@ -423,8 +433,10 @@ def get_user_listings(
     if listings:
         wilayats_map = get_wilayats_map(listings)
         fav_set = get_favorites_set(current_user)
+        listing_ids = [l["id"] for l in listings]
+        fav_counts = batch_favorites_count(listing_ids)
         for i in range(len(listings)):
-            listings[i] = format_joined_listing(listings[i], wilayats_map, fav_set)
+            listings[i] = format_joined_listing(listings[i], wilayats_map, fav_set, fav_counts)
 
     return listings
 
@@ -504,6 +516,13 @@ def get_listing(listing_id: str, current_user: Optional[dict] = Depends(get_opti
                 raise HTTPException(status_code=410, detail="This listing has expired")
         except (ValueError, TypeError):
             pass  # If parsing fails, allow access
+            
+    # 8. Favorite count for single listing
+    def fav_count_query(table):
+        return table.select("id", count="exact").eq("listing_id", listing_id)
+    
+    fav_res = db.query("favorites", fav_count_query)
+    listing["favorites_count"] = fav_res.count if fav_res.count is not None else 0
         
     return listing
 
@@ -584,6 +603,33 @@ def update_listing(
     return updated
 
 
+@router.delete("/{listing_id}", status_code=status.HTTP_200_OK)
+def delete_listing(
+    listing_id: str,
+    current_user: dict = Depends(get_current_customer)
+):
+    """
+    Soft delete a listing.
+    """
+    listing = db.select_one("listings", listing_id)
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+        
+    if listing["user_id"] != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this listing")
+        
+    # Check if already deleted
+    if listing["status"] == "soft_deleted":
+        return {"success": True, "message": "Listing already deleted"}
+        
+    updated = db.update("listings", listing_id, {"status": "soft_deleted"})
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to delete listing")
+        
+    logger.info(f"Listing {listing_id} soft-deleted by user {current_user['id']}")
+    return {"success": True, "message": "Listing deleted successfully"}
+
+
 # -------------------------------------------------
 # REPORT ENDPOINTS
 # -------------------------------------------------
@@ -662,8 +708,10 @@ def list_all_listings_admin(
     if listings:
         wilayats_map = get_wilayats_map(listings)
         fav_set = get_favorites_set(None)
+        listing_ids = [l["id"] for l in listings]
+        fav_counts = batch_favorites_count(listing_ids)
         for i in range(len(listings)):
-            listings[i] = format_joined_listing(listings[i], wilayats_map, fav_set)
+            listings[i] = format_joined_listing(listings[i], wilayats_map, fav_set, fav_counts)
 
     return listings
 
