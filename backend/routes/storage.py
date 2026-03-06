@@ -72,16 +72,10 @@ def upload_file_proxy(
             urls.append(url)
             uploaded_files.append({"url": url, "file_path": object_name})
             
-        # Return backward compatible format + all URLs
-        # If user uploads multiple files, the first file's details are at the root
-        response_data = {
-            "url": uploaded_files[0]["url"], 
-            "file_path": uploaded_files[0]["file_path"],
-            "urls": urls,
-            "files": uploaded_files
-        }
+        if len(uploaded_files) == 1:
+            return uploaded_files[0]
         
-        return response_data
+        return uploaded_files
         
     except Exception as e:
         logger.error(f"Error during file proxy upload: {str(e)}")
