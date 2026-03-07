@@ -482,6 +482,10 @@ def get_store_listings(
                 for w in wilayats_res.data:
                     wilayats_map[(w["name_en"], w["parent_id"])] = w
 
+        # Batch fetch category/subcategory details
+        from utils.helpers import batch_enrich_categories
+        batch_enrich_categories(listings)
+
         for listing in listings:
             listing["images"] = images_map.get(listing["id"], [])
             listing["promotions"] = promotions_map.get(listing["id"], [])

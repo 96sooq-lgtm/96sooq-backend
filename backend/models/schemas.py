@@ -295,6 +295,11 @@ class ListingOut(BaseModel):
     location_name_ar: Optional[str] = None
     place_name_en: Optional[str] = None
     place_name_ar: Optional[str] = None
+    category_name_en: Optional[str] = None
+    category_name_ar: Optional[str] = None
+    subcategory_id: Optional[str] = None
+    subcategory_name_en: Optional[str] = None
+    subcategory_name_ar: Optional[str] = None
     created_at: Optional[str] = None
     seller_type: str = "individual"
     user_name: Optional[str] = None

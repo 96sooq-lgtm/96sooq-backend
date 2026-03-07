@@ -113,6 +113,46 @@ def batch_categories(category_ids: List[str]) -> Dict[str, Dict]:
     return {cat["id"]: cat for cat in categories}
 
 
+def batch_enrich_categories(listings: List[dict]):
+    """
+    In-place enrichment of listings with category and subcategory details.
+    """
+    if not listings:
+        return
+    
+    cat_ids = list({l.get("category_id") for l in listings if l.get("category_id")})
+    if not cat_ids:
+        return
+        
+    categories_map = batch_categories(cat_ids)
+    parent_ids = list({c.get("parent_id") for c in categories_map.values() if c.get("parent_id")})
+    parents_map = batch_categories(parent_ids) if parent_ids else {}
+    
+    for l in listings:
+        cid = l.get("category_id")
+        if cid:
+            cat = categories_map.get(cid)
+            if cat:
+                # Current category is the subcategory (leaf)
+                l["subcategory_id"] = cat.get("id")
+                l["subcategory_name_en"] = cat.get("name_en")
+                l["subcategory_name_ar"] = cat.get("name_ar")
+                
+                # Parent is the main category
+                if cat.get("parent_id"):
+                    parent = parents_map.get(cat["parent_id"])
+                    if parent:
+                        l["category_id"] = parent.get("id")
+                        l["category_name_en"] = parent.get("name_en")
+                        l["category_name_ar"] = parent.get("name_ar")
+                    else:
+                        l["category_name_en"] = cat.get("name_en")
+                        l["category_name_ar"] = cat.get("name_ar")
+                else:
+                    l["category_name_en"] = cat.get("name_en")
+                    l["category_name_ar"] = cat.get("name_ar")
+
+
 
 def batch_listings(listing_ids: List[str], columns: str = "*") -> Dict[str, Dict]:
     """

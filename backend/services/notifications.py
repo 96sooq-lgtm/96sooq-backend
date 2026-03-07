@@ -134,3 +134,20 @@ def notify_new_message(
         logger.info(f"New message notification sent: receiver={receiver_id}, conv={conversation_id}")
     except Exception as e:
         logger.error(f"Failed to send message notification: {e}")
+
+
+def notify_listing_rejected(user_id: str, listing_id: str, listing_title: str, reason: str):
+    """
+    Trigger 4: When admin rejects the listing.
+    """
+    title = "Listing Rejected ❌"
+    body = f"Your listing \"{listing_title}\" was not approved. Reason: {reason}"
+    data = {
+        "listing_id": listing_id,
+        "screen": "my_listings",
+    }
+    try:
+        _send_notification(user_id, title, body, "listing_rejected", data)
+        logger.info(f"Listing rejected notification sent: user={user_id}, listing={listing_id}")
+    except Exception as e:
+        logger.error(f"Failed to send listing rejected notification: {e}")

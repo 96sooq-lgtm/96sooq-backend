@@ -83,12 +83,6 @@ def format_joined_listing(listing: dict, wilayats_map: dict, fav_set: set, fav_c
     now_str = datetime.utcnow().isoformat()
     from utils.helpers import get_viewable_image_url
     
-    # Categories
-    cat = listing.get("categories")
-    if isinstance(cat, dict):
-        listing["category_name_en"] = cat.get("name_en")
-        listing["category_name_ar"] = cat.get("name_ar")
-        
     # Images
     imgs = listing.get("listing_images") or []
     sorted_imgs = sorted(imgs, key=lambda x: (not x.get("is_main", False), x.get("display_order", 0)))
@@ -369,6 +363,8 @@ def list_listings(
     listings = result.data if result.data else []
     
     if listings:
+        from utils.helpers import batch_enrich_categories
+        batch_enrich_categories(listings)
         wilayats_map = get_wilayats_map(listings)
         fav_set = get_favorites_set(current_user)
         listing_ids = [l["id"] for l in listings]
@@ -402,6 +398,8 @@ def get_my_listings(
     listings = result.data if result.data else []
     
     if listings:
+        from utils.helpers import batch_enrich_categories
+        batch_enrich_categories(listings)
         wilayats_map = get_wilayats_map(listings)
         fav_set = get_favorites_set(current_user)
         listing_ids = [l["id"] for l in listings]
@@ -434,6 +432,8 @@ def get_user_listings(
     listings = result.data if result.data else []
     
     if listings:
+        from utils.helpers import batch_enrich_categories
+        batch_enrich_categories(listings)
         wilayats_map = get_wilayats_map(listings)
         fav_set = get_favorites_set(current_user)
         listing_ids = [l["id"] for l in listings]
@@ -460,7 +460,9 @@ def get_listing(listing_id: str, current_user: Optional[dict] = Depends(get_opti
     images_map = batch_listing_images([listing_id])
     listing["images"] = images_map.get(listing_id, [])
     
-    # 2. Category details removed to match ListingOut
+    # 2. Category details
+    from utils.helpers import batch_enrich_categories
+    batch_enrich_categories([listing])
     
     # 3. Fetch Location details
     if listing.get("location_id"):
@@ -706,6 +708,8 @@ def list_all_listings_admin(
     listings = result.data if result.data else []
 
     if listings:
+        from utils.helpers import batch_enrich_categories
+        batch_enrich_categories(listings)
         wilayats_map = get_wilayats_map(listings)
         fav_set = get_favorites_set(None)
         listing_ids = [l["id"] for l in listings]
@@ -882,6 +886,19 @@ def reject_listing(listing_id: str, reason: str = Query(..., min_length=1)):
         for promo in promo_result.data:
             db.update("listing_promotions", promo["id"], {"status": "paused"})
         logger.info(f"Paused {len(promo_result.data)} active boost(s) for rejected listing {listing_id}")
+
+    # ── Push Notification: Listing rejected → notify owner ──
+    try:
+        from services.notifications import notify_listing_rejected
+        if listing:
+            notify_listing_rejected(
+                user_id=listing["user_id"],
+                listing_id=listing_id,
+                listing_title=listing.get("title", "Your listing"),
+                reason=reason,
+            )
+    except Exception as notif_err:
+        logger.warning(f"Listing rejected notification failed (non-blocking): {notif_err}")
 
     return updated
 

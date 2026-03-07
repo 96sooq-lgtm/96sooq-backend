@@ -1200,10 +1200,14 @@ def get_chat_screen_ad(
     if not eligible_promos:
         return {"ad": None, "has_ads": False}
 
-    # 4. Location filtering with expanding radius
+    # 4. Location filtering with expanding radius (Accumulative to ensure variety)
     expansion_level = "all"
     resolved_wilayat = None
     resolved_gov = None
+    
+    # We'll try to find a pool of at least 3-5 ads for variety
+    MIN_AD_POOL_SIZE = 3
+    final_promos = []
 
     if governorate or wilayat:
         loc = resolve_location_by_name(governorate_name=governorate, wilayat_name=wilayat)
@@ -1218,28 +1222,34 @@ def get_chat_screen_ad(
                 if active_listings_map.get(p["listing_id"], {}).get("place") == resolved_wilayat
             ]
             if wilayat_promos:
+                final_promos = wilayat_promos
                 expansion_level = "wilayat"
-                eligible_promos = wilayat_promos
-            elif gov_id:
-                # Level 2: Governorate match
-                gov_wilayats = get_wilayat_names_in_governorate(gov_id) or []
-                gov_promos = [
-                    p for p in eligible_promos
-                    if active_listings_map.get(p["listing_id"], {}).get("place") in gov_wilayats
-                ]
-                if gov_promos:
-                    expansion_level = "governorate"
-                    eligible_promos = gov_promos
-                # else: Level 3 — keep all (expansion_level stays "all")
-        elif gov_id:
+
+        # Level 2: Fill from Governorate if pool is small
+        if len(final_promos) < MIN_AD_POOL_SIZE and gov_id:
             gov_wilayats = get_wilayat_names_in_governorate(gov_id) or []
             gov_promos = [
                 p for p in eligible_promos
                 if active_listings_map.get(p["listing_id"], {}).get("place") in gov_wilayats
+                and p not in final_promos
             ]
             if gov_promos:
-                expansion_level = "governorate"
-                eligible_promos = gov_promos
+                final_promos.extend(gov_promos)
+                if not expansion_level:
+                    expansion_level = "governorate"
+
+    # Level 3: Fallback to all if pool is still small
+    if len(final_promos) < MIN_AD_POOL_SIZE:
+        # Add ads from other regions that aren't already in our pool
+        others = [p for p in eligible_promos if p not in final_promos]
+        # Shuffle others to bring variety from other regions
+        random.shuffle(others)
+        final_promos.extend(others)
+        if not expansion_level:
+            expansion_level = "all"
+
+    # Update eligible_promos with our balanced pool
+    eligible_promos = final_promos
 
     # 5. Exclude recently shown IDs (cycling: if all excluded, reset)
     excluded = set()
@@ -1252,14 +1262,19 @@ def get_chat_screen_ad(
     if not non_excluded:
         non_excluded = eligible_promos
 
-    # 6. Weighted random selection (lower impressions = higher weight)
-    # Formula: weight = 1 / (impressions + 1)  → new ads (0 impressions) get weight 1.0
+    # 6. Random selection
+    # We shuffle first to ensure even random.choice feels fresh if weights are similar
+    random.shuffle(non_excluded)
+    
+    # Weighted random selection (lower impressions = higher weight)
+    # Formula: weight = 1 / (impressions + 1)
     weights = []
     for p in non_excluded:
         imp = p.get("impressions") or 0
-        weights.append(1.0 / (imp + 1))
+        # Use a dampening factor to avoid extreme weighting for 0-impression ads
+        weights.append(1.0 / (math.sqrt(imp) + 1))
 
-    # Pick one using weighted random (stdlib — no numpy needed)
+    # Pick one
     selected_promo = random.choices(non_excluded, weights=weights, k=1)[0]
     selected_listing_id = selected_promo["listing_id"]
 
