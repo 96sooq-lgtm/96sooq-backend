@@ -1049,6 +1049,9 @@ def get_category_feed(
             favs = db.select("favorites", filters={"user_id": current_user["id"]})
             fav_set = {f["listing_id"] for f in favs}
 
+        # Fetch favorites count for all listings
+        fav_counts_map = batch_favorites_count(listing_ids)
+
         # Batch fetch Wilayat details (cities)
         places = list({l["place"] for l in all_listings if l.get("place")})
         wilayats_map = {}
