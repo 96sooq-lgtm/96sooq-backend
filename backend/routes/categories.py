@@ -465,7 +465,7 @@ def add_subcategory_attribute(
                 detail=f"Attribute '{attribute.name}' already exists in '{category['name_en']}'"
             )
 
-        current_schema.append(attribute.dict())
+        current_schema.append(attribute.model_dump())
         updated = db.update("categories", category_id, {"attributes_schema": current_schema})
         if not updated:
             logger.error(f"db.update returned None when adding attribute to '{category_id}'")
@@ -475,6 +475,7 @@ def add_subcategory_attribute(
             )
 
         logger.info(f"Attribute '{attribute.name}' added to category '{category['name_en']}' (total: {len(current_schema)})")
+        logger.debug(f"Updated schema for {category_id}: {json.dumps(current_schema, ensure_ascii=False)}")
         return updated
 
     except HTTPException:
@@ -524,7 +525,10 @@ def replace_subcategory_attributes(
                 detail=f"Duplicate attribute names found: {list(set(duplicates))}"
             )
 
-        updated = db.update("categories", category_id, {"attributes_schema": [a.dict() for a in attributes]})
+        new_schema = [a.model_dump() for a in attributes]
+        logger.info(f"Setting {len(new_schema)} attributes for category {category_id}")
+        
+        updated = db.update("categories", category_id, {"attributes_schema": new_schema})
         if not updated:
             logger.error(f"db.update returned None when replacing attributes for '{category_id}'")
             raise HTTPException(
@@ -533,6 +537,7 @@ def replace_subcategory_attributes(
             )
 
         logger.info(f"Attributes replaced for category '{category['name_en']}': {names}")
+        logger.debug(f"New attributes_schema for {category_id}: {json.dumps(new_schema, ensure_ascii=False)}")
         return updated
 
     except HTTPException:

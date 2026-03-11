@@ -53,7 +53,11 @@ def enrich_attributes_with_type(attributes_values: dict, category_id: str) -> di
             "value": actual_val,
             "type": attr_def.get("type", "text_field"),
             "label_en": attr_def.get("label_en", key),
-            "label_ar": attr_def.get("label_ar", "")
+            "label_ar": attr_def.get("label_ar", ""),
+            "options": attr_def.get("options", []),
+            "options_ar": attr_def.get("options_ar", []),
+            "depends_on": attr_def.get("depends_on"),
+            "options_map": attr_def.get("options_map")
         }
     return enriched_attrs
 

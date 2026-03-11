@@ -43,42 +43,45 @@ class AttributeDefinition(BaseModel):
     name: str                           # field key, e.g. "fuel"
     label_en: str                       # English label shown in UI
     label_ar: Optional[str] = None      # Arabic label
-    type: str                           # "radio" | "dropdown" | "text_field"
-    options: Optional[List[str]] = []   # choices for radio/dropdown e.g. ["Petrol","Diesel"]
+    type: str                           # "radio" | "dropdown" | "text_field" | "multi_file" | "number" | "textarea"
+    options: List[str] = []             # choices for radio/dropdown e.g. ["Petrol","Diesel"]
+    options_ar: List[str] = []          # Arabic choices for radio/dropdown
     required: bool = False
     status: str = "active"             # "active" | "inactive"
+    depends_on: Optional[str] = None    # Name of the parent attribute
+    options_map: Optional[Dict[str, List[str]]] = None # Manual mapping for dependent options
 
 
 class CategoryCreate(BaseModel):
-	name_en: str
-	name_ar: str
-	image_url: Optional[str] = None
-	parent_id: Optional[str] = None
-	attributes_schema: Optional[list | dict] = None
-	is_active: bool = True
+    name_en: str
+    name_ar: str
+    image_url: Optional[str] = None
+    parent_id: Optional[str] = None
+    attributes_schema: Optional[List[AttributeDefinition]] = None
+    is_active: bool = True
 
 
 class CategoryUpdate(BaseModel):
-	name_en: Optional[str] = None
-	name_ar: Optional[str] = None
-	image_url: Optional[str] = None
-	parent_id: Optional[str] = None
-	attributes_schema: Optional[list | dict] = None
-	is_active: Optional[bool] = None
+    name_en: Optional[str] = None
+    name_ar: Optional[str] = None
+    image_url: Optional[str] = None
+    parent_id: Optional[str] = None
+    attributes_schema: Optional[List[AttributeDefinition]] = None
+    is_active: Optional[bool] = None
 
 
 class CategoryOut(BaseModel):
-	id: str
-	name_en: str
-	name_ar: str
-	image_url: Optional[str] = None
-	parent_id: Optional[str] = None
-	parent_name_en: Optional[str] = None
-	parent_name_ar: Optional[str] = None
-	attributes_schema: Optional[list | dict] = None
-	is_active: bool
-	created_at: Optional[str] = None
-	updated_at: Optional[str] = None
+    id: str
+    name_en: str
+    name_ar: str
+    image_url: Optional[str] = None
+    parent_id: Optional[str] = None
+    parent_name_en: Optional[str] = None
+    parent_name_ar: Optional[str] = None
+    attributes_schema: Optional[List[AttributeDefinition]] = None
+    is_active: bool
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
 
 
 # Customer Auth schemas
