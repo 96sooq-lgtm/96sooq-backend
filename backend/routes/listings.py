@@ -26,6 +26,27 @@ admin_router = APIRouter(
 # -------------------------------------------------
 # HELPER FUNCTIONS
 # -------------------------------------------------
+def track_search(query: str):
+    """Log search query for popular searches feature."""
+    if not query or len(query.strip()) < 2:
+        return
+    q = query.strip().lower()
+    try:
+        # Check if exists
+        existing = db.select("search_logs", filters={"query": q})
+        if existing:
+            log_id = existing[0]["id"]
+            new_count = existing[0].get("count", 0) + 1
+            db.update("search_logs", log_id, {
+                "count": new_count,
+                "last_searched_at": datetime.utcnow().isoformat()
+            })
+        else:
+            db.insert("search_logs", {"query": q, "count": 1})
+    except Exception as e:
+        logger.warning(f"Failed to track search query '{q}': {e}")
+
+
 def is_leaf_category(category_id: str) -> bool:
     """Check if a category is a leaf node."""
     children = db.select("categories", filters={"parent_id": category_id})
@@ -360,6 +381,7 @@ def list_listings(
         if search:
             # Supabase/PostgREST text search (simple ilike for title)
             query = query.ilike("title", f"%{search}%")
+            track_search(search)
             
         return query.range(skip, skip + limit - 1).order("created_at", desc=True)
 

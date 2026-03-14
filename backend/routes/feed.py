@@ -20,6 +20,17 @@ router = APIRouter(
     tags=["feed"]
 )
 
+@router.get("/popular-searches")
+def get_popular_searches(limit: int = Query(10, ge=1, le=20)):
+    """
+    Returns the most frequent search queries.
+    """
+    def query_func(table):
+        return table.select("query, count").order("count", desc=True).limit(limit)
+    
+    result = db.query("search_logs", query_func)
+    return result.data if result.data else []
+
 # Constants for latest picks
 DEFAULT_LIMIT = 20
 MAX_LIMIT = 50

@@ -90,6 +90,7 @@ class CustomerOut(BaseModel):
 	name: Optional[str] = None
 	phone_number: str
 	is_active: bool
+	language: Optional[str] = "en"
 	access_token: Optional[str] = None
 	token_type: Optional[str] = None
 
@@ -110,6 +111,7 @@ class AppUserAdminDetail(BaseModel):
     email: Optional[str] = None
     is_active: bool
     provider: Optional[str] = None
+    language: Optional[str] = "en"
     profile_picture: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None

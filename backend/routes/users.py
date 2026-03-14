@@ -284,6 +284,31 @@ def report_user(
     return {"success": True, "message": "Report submitted. Our team will review it."}
 
 
+@user_router.get("/me/language")
+def get_user_language(current_user: dict = Depends(get_current_customer)):
+    """
+    Get current user's language preference.
+    """
+    user = db.select_one("app_users", current_user["id"], columns="language")
+    return {"language": user.get("language") if user else "en"}
+
+
+@user_router.put("/me/language")
+def update_user_language(
+    language: str = Query(..., regex="^(en|ar)$"),
+    current_user: dict = Depends(get_current_customer)
+):
+    """
+    Update current user's language preference (en or ar).
+    """
+    updated = db.update("app_users", current_user["id"], {"language": language})
+    if not updated:
+        raise HTTPException(status_code=500, detail="Failed to update language")
+    
+    logger.info(f"User {current_user['id']} updated language to {language}")
+    return {"success": True, "language": language}
+
+
 @user_router.delete("/me", status_code=status.HTTP_200_OK)
 def delete_my_account(current_user: dict = Depends(get_current_customer)):
     """
