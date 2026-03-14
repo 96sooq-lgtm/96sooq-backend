@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Query, status
+from pydantic import BaseModel
 from typing import List, Optional
 from models import schemas
 from db.supabase_client import db
@@ -293,14 +294,21 @@ def get_user_language(current_user: dict = Depends(get_current_customer)):
     return {"language": user.get("language") if user else "en"}
 
 
+class LanguageUpdate(BaseModel):
+    language: str
+
 @user_router.put("/me/language")
 def update_user_language(
-    language: str = Query(..., regex="^(en|ar)$"),
+    payload: LanguageUpdate,
     current_user: dict = Depends(get_current_customer)
 ):
     """
     Update current user's language preference (en or ar).
     """
+    language = payload.language
+    if language not in ["en", "ar"]:
+        raise HTTPException(status_code=400, detail="Language must be 'en' or 'ar'")
+
     updated = db.update("app_users", current_user["id"], {"language": language})
     if not updated:
         raise HTTPException(status_code=500, detail="Failed to update language")
