@@ -11,7 +11,7 @@ from utils.logger import get_logger
 
 logger = get_logger("expire_listings_cron")
 
-INTERVAL_SECONDS = 10 * 60  # 10 minutes
+INTERVAL_SECONDS = 24 * 60 * 60  # 24 hours (once per day)
 
 
 def _expire_listings() -> int:
