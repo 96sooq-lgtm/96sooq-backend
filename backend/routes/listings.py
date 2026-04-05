@@ -615,9 +615,12 @@ def update_listing(
         
     update_data = payload.dict(exclude_unset=True)
     
-    # Block status update from user
+    # Allow users to mark as 'sold' only; block all other status changes
     if "status" in update_data:
-        del update_data["status"]
+        if update_data["status"] == "sold":
+            pass  # Allowed — user marking their listing as sold
+        else:
+            del update_data["status"]
         
     # Security/Loophole Fix:
     # If user edits an active listing (title, description, price, images, attributes),
@@ -627,6 +630,10 @@ def update_listing(
     
     if is_sensitive_update and listing["status"] == "active":
         update_data["status"] = "pending_approval"
+
+    # Guard: nothing to update
+    if not update_data:
+        return listing
         
     # Enrich attributes if they are being updated
     if "attributes_values" in update_data and update_data["attributes_values"]:
