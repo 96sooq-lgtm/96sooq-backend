@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status, Depends, Query
+from fastapi import APIRouter, HTTPException, status, Depends, Query, Request
 from models import schemas
 from db.supabase_client import db
 from utils.auth import get_current_customer, get_current_admin, get_optional_current_customer
@@ -105,8 +105,23 @@ def get_favorites_set(current_user: Optional[dict]) -> set:
 
 def format_joined_listing(listing: dict, wilayats_map: dict, fav_set: set, fav_counts: dict = None) -> dict:
     from datetime import datetime
-    now_str = datetime.utcnow().isoformat()
+    now = datetime.utcnow()
+    now_str = now.isoformat()
     from utils.helpers import get_viewable_image_url
+
+    # Compute is_expired from expires_at
+    is_expired = False
+    if listing.get("expires_at"):
+        try:
+            exp_str = listing["expires_at"]
+            if isinstance(exp_str, str):
+                exp = datetime.fromisoformat(exp_str.replace("Z", "+00:00")).replace(tzinfo=None)
+            else:
+                exp = exp_str.replace(tzinfo=None) if hasattr(exp_str, 'replace') else exp_str
+            is_expired = now > exp
+        except (ValueError, TypeError):
+            pass
+    listing["is_expired"] = is_expired
     
     # Images
     imgs = listing.get("listing_images") or []
@@ -404,12 +419,13 @@ def list_listings(
 def get_my_listings(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
-    status: Optional[str] = Query(None, description="Filter by status, e.g., 'active', 'draft', 'pending_approval'"),
+    status: Optional[str] = Query(None, description="Filter by status, e.g., 'active', 'draft', 'pending_approval', 'expired'"),
     current_user: dict = Depends(get_current_customer)
 ):
     """
     Get all listings for the currently authenticated user.
     Returns listings regardless of status, unless status query param is provided.
+    Includes is_expired flag so the frontend can prompt for renewal.
     """
     user_id = current_user["id"]
     
@@ -471,7 +487,29 @@ def get_user_listings(
 
 
 @router.get("/{listing_id}", response_model=schemas.ListingOut)
-def get_listing(listing_id: str, current_user: Optional[dict] = Depends(get_optional_current_customer)):
+def get_listing(
+    listing_id: str, 
+    request: Request,
+    current_user: Optional[dict] = Depends(get_optional_current_customer)
+):
+    # 1. Increment View Count (Lightweight/Secure)
+    from utils.helpers import hash_ip
+    client_ip = request.client.host if request.client else "unknown"
+    hashed_ip = hash_ip(client_ip)
+    user_id = current_user["id"] if current_user else None
+    
+    try:
+        db.get_client().rpc(
+            "increment_listing_view", 
+            {
+                "p_listing_id": listing_id, 
+                "p_user_id": user_id, 
+                "p_hashed_ip": hashed_ip
+            }
+        ).execute()
+    except Exception as e:
+        logger.warning(f"Failed to increment view count for {listing_id}: {e}")
+
     listing = db.select_one("listings", listing_id)
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
@@ -535,18 +573,23 @@ def get_listing(listing_id: str, current_user: Optional[dict] = Depends(get_opti
     
     is_owner = current_user and current_user.get("id") == listing.get("user_id")
     
-    if listing["status"] != "active" and not is_owner and not is_admin:
+    if listing["status"] not in ("active", "expired") and not is_owner and not is_admin:
         raise HTTPException(status_code=403, detail="You do not have permission to view this listing")
     
-    # Block access to expired listings for non-owners/non-admins
-    if listing["status"] == "active" and listing.get("expires_at") and not is_owner and not is_admin:
+    # Compute is_expired flag
+    is_expired = listing["status"] == "expired"
+    if not is_expired and listing.get("expires_at"):
         from datetime import datetime as _dt
         try:
             exp = _dt.fromisoformat(listing["expires_at"].replace("Z", "+00:00")).replace(tzinfo=None)
-            if _dt.utcnow() > exp:
-                raise HTTPException(status_code=410, detail="This listing has expired")
+            is_expired = _dt.utcnow() > exp
         except (ValueError, TypeError):
-            pass  # If parsing fails, allow access
+            pass
+    listing["is_expired"] = is_expired
+
+    # Block access to expired listings for non-owners/non-admins
+    if is_expired and not is_owner and not is_admin:
+        raise HTTPException(status_code=410, detail="This listing has expired")
             
     # 8. Favorite count
     # Now retrieved via the persistent column in the listings table

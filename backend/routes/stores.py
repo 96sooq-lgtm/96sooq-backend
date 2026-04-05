@@ -495,6 +495,21 @@ def get_store_listings(
             listing["store_logo"] = store.get("logo")
             listing["store_id"] = store["id"]
             listing["seller_phone_number"] = seller_phone
+
+            # Compute is_expired flag
+            is_expired = listing.get("status") == "expired"
+            if not is_expired and listing.get("expires_at"):
+                from datetime import datetime as _dt
+                try:
+                    exp_str = listing["expires_at"]
+                    if isinstance(exp_str, str):
+                        exp = _dt.fromisoformat(exp_str.replace("Z", "+00:00")).replace(tzinfo=None)
+                    else:
+                        exp = exp_str.replace(tzinfo=None) if hasattr(exp_str, 'replace') else exp_str
+                    is_expired = _dt.utcnow() > exp
+                except (ValueError, TypeError):
+                    pass
+            listing["is_expired"] = is_expired
             
             # Locations
             if listing.get("location_id"):

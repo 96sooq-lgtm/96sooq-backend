@@ -107,7 +107,7 @@ async def activate_bundle(payment_id: str, metadata: dict, user_id: str):
                         logger.info(f"Deducted quota from subscription {active_sub['id']}. New remaining={remaining - 1}")
                     listing_expires_at = active_sub.get("end_date")
 
-            # Move listing to pending_approval
+            # Move listing to pending_approval (works for both new and renewal)
             listing_update = {"status": "pending_approval"}
             if listing_expires_at:
                 listing_update["expires_at"] = listing_expires_at

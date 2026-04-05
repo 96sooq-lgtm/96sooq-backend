@@ -317,6 +317,9 @@ class ListingOut(BaseModel):
     promotions: Optional[List[dict]] = []
     is_promoted: bool = False
     favorites_count: int = 0
+    views_count: int = 0
+    expires_at: Optional[datetime] = None
+    is_expired: bool = False
 
 class FavoriteListingOut(ListingOut):
     favorited_at: Optional[str] = None

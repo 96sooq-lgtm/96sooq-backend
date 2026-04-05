@@ -49,8 +49,22 @@ settings = Settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    import asyncio
+    from services.expire_listings_cron import run_expiry_cron
+
     logger.info("Starting 96sooq Backend API...")
+
+    # Launch background cron for auto-expiring listings & subscriptions
+    cron_task = asyncio.create_task(run_expiry_cron())
+
     yield
+
+    # Cancel cron on shutdown
+    cron_task.cancel()
+    try:
+        await cron_task
+    except asyncio.CancelledError:
+        pass
     logger.info("Shutting down 96sooq Backend API...")
 
 # Create FastAPI app
