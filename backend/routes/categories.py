@@ -307,13 +307,14 @@ def update_category(category_id: str, payload: schemas.CategoryUpdate):
 
         # Handle name update if provided
         if payload.name_en is not None or payload.name_ar is not None:
-            new_en = payload.name_en if payload.name_en is not None else existing["name_en"]
-            new_ar = payload.name_ar if payload.name_ar is not None else existing["name_ar"]
+            new_en = payload.name_en if payload.name_en is not None else existing.get("name_en")
+            new_ar = payload.name_ar if payload.name_ar is not None else existing.get("name_ar")
 
-            if new_en != existing["name_en"]:
+            if new_en and new_en != existing.get("name_en"):
                 duplicate = db.select("categories", filters={"name_en": new_en})
-                if duplicate:
-                    logger.warning(f"Update failed: name '{new_en}' already taken by category {duplicate[0]['id']}")
+                if duplicate and any(d["id"] != category_id for d in duplicate):
+                    conflict = next(d for d in duplicate if d["id"] != category_id)
+                    logger.warning(f"Update failed: name '{new_en}' already taken by category {conflict['id']}")
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail=f"Category with name '{new_en}' already exists"
@@ -345,7 +346,7 @@ def update_category(category_id: str, payload: schemas.CategoryUpdate):
             update_data["parent_id"] = payload.parent_id
 
         if payload.attributes_schema is not None:
-            update_data["attributes_schema"] = payload.attributes_schema
+            update_data["attributes_schema"] = [a.model_dump() for a in payload.attributes_schema]
 
         if not update_data:
             logger.info(f"No fields to update for category '{category_id}'")
