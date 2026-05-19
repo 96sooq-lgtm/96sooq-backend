@@ -35,7 +35,16 @@ def create_category(payload: schemas.CategoryCreate):
       Subcategories automatically get default attributes_schema if not provided.
     """
     try:
-        logger.info(f"Creating category: name_en='{payload.name_en}', parent_id={payload.parent_id}")
+        # Clean inputs - treat empty strings and "null" strings as None
+        image_url = payload.image_url
+        if image_url == "" or image_url == "null":
+            image_url = None
+
+        parent_id = payload.parent_id
+        if parent_id == "" or parent_id == "null":
+            parent_id = None
+
+        logger.info(f"Creating category: name_en='{payload.name_en}', parent_id={parent_id}")
 
         # Check existence by English name
         existing = db.select("categories", filters={"name_en": payload.name_en})
@@ -53,19 +62,19 @@ def create_category(payload: schemas.CategoryCreate):
             "is_active": payload.is_active
         }
 
-        if payload.image_url:
-            data["image_url"] = payload.image_url
+        if image_url:
+            data["image_url"] = image_url
 
-        if payload.parent_id:
+        if parent_id:
             # Verify parent exists
-            parent = db.select_one("categories", payload.parent_id)
+            parent = db.select_one("categories", parent_id)
             if not parent:
-                logger.warning(f"Category creation failed: parent_id '{payload.parent_id}' not found")
+                logger.warning(f"Category creation failed: parent_id '{parent_id}' not found")
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Parent category with id '{payload.parent_id}' not found"
+                    detail=f"Parent category with id '{parent_id}' not found"
                 )
-            data["parent_id"] = payload.parent_id
+            data["parent_id"] = parent_id
             logger.info(f"Creating subcategory under parent '{parent['name_en']}'")
 
             # Set default attributes_schema for subcategories if not provided
@@ -326,24 +335,34 @@ def update_category(category_id: str, payload: schemas.CategoryUpdate):
         if payload.is_active is not None:
             update_data["is_active"] = payload.is_active
 
-        if payload.image_url is not None:
-            update_data["image_url"] = payload.image_url
+        # Check if image_url was explicitly sent in the request (even if None/null)
+        if "image_url" in payload.model_fields_set:
+            img_url = payload.image_url
+            if img_url == "" or img_url == "null" or img_url is None:
+                update_data["image_url"] = None
+            else:
+                update_data["image_url"] = img_url
 
-        if payload.parent_id is not None:
-            if payload.parent_id == category_id:
-                logger.warning(f"Update failed: category '{category_id}' cannot be its own parent")
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Category cannot be its own parent"
-                )
-            parent = db.select_one("categories", payload.parent_id)
-            if not parent:
-                logger.warning(f"Update failed: parent_id '{payload.parent_id}' not found")
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Parent category with id '{payload.parent_id}' not found"
-                )
-            update_data["parent_id"] = payload.parent_id
+        # Check if parent_id was explicitly sent in the request (even if None/null)
+        if "parent_id" in payload.model_fields_set:
+            p_id = payload.parent_id
+            if p_id == "" or p_id == "null" or p_id is None:
+                update_data["parent_id"] = None
+            else:
+                if p_id == category_id:
+                    logger.warning(f"Update failed: category '{category_id}' cannot be its own parent")
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Category cannot be its own parent"
+                    )
+                parent = db.select_one("categories", p_id)
+                if not parent:
+                    logger.warning(f"Update failed: parent_id '{p_id}' not found")
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Parent category with id '{p_id}' not found"
+                    )
+                update_data["parent_id"] = p_id
 
         if payload.attributes_schema is not None:
             update_data["attributes_schema"] = [a.model_dump() for a in payload.attributes_schema]
