@@ -79,7 +79,16 @@ def oauth_check_user(request: Request, payload: OAuthCheckRequest):
         
         # Check if user is active
         if not user.get("is_active", True):
-            raise HTTPException(status_code=403, detail="Account is locked or deactivated")
+            # Distinguish: self-deleted (has deleted_at) vs admin-blocked (no deleted_at)
+            if user.get("deleted_at"):
+                # User previously deleted their own account — reactivate on re-login
+                # (Apple App Store Guideline 5.1.1: deleted users must be able to re-register)
+                db.update("app_users", user["id"], {"is_active": True, "deleted_at": None})
+                user["is_active"] = True
+                logger.info(f"Reactivated self-deleted user {user['id']} via {provider}")
+            else:
+                # Admin-blocked user — do NOT reactivate
+                raise HTTPException(status_code=403, detail="Account is locked or deactivated")
             
         access_token = create_customer_token(data={
             "sub": user.get("email") or user.get("provider_id"),
@@ -137,26 +146,61 @@ def oauth_complete_profile(payload: OAuthCompleteProfileRequest):
     })
     
     if existing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="User already exists. Please use check-user endpoint."
-        )
+        user = existing[0]
+        # If the existing record is a self-deleted account, reactivate with new profile data
+        if not user.get("is_active", True) and user.get("deleted_at"):
+            updated = db.update("app_users", user["id"], {
+                "is_active": True,
+                "deleted_at": None,
+                "name": payload.name,
+                "phone_number": payload.phone_number,
+                "email": payload.email,
+                "profile_picture": payload.profile_picture,
+            })
+            if not updated:
+                raise HTTPException(status_code=500, detail="Failed to reactivate account")
+            
+            logger.info(f"Reactivated self-deleted user {user['id']} via complete-profile")
+            
+            access_token = create_customer_token(data={
+                "sub": payload.email,
+                "role": "customer",
+                "user_id": user["id"]
+            })
+            return {
+                "id": user["id"],
+                "name": payload.name,
+                "phone_number": payload.phone_number,
+                "is_active": True,
+                "access_token": access_token,
+                "token_type": "bearer"
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User already exists. Please use check-user endpoint."
+            )
     
-    # Check if phone number is already taken
+    # Check if phone number is already taken (exclude deactivated/self-deleted accounts)
     existing_phone = db.select("app_users", filters={"phone_number": payload.phone_number})
     if existing_phone:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Mobile number already exists"
-        )
+        # Only block if the existing record is an active account
+        active_phone_users = [u for u in existing_phone if u.get("is_active", True)]
+        if active_phone_users:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Mobile number already exists"
+            )
 
-    # Check if email is already taken (to avoid 500 duplicate key error)
+    # Check if email is already taken (exclude deactivated/self-deleted accounts)
     existing_email = db.select("app_users", filters={"email": payload.email})
     if existing_email:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already exists"
-        )
+        active_email_users = [u for u in existing_email if u.get("is_active", True)]
+        if active_email_users:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Email already exists"
+            )
     
     # Create new user
     new_user_data = {

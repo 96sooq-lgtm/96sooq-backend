@@ -76,6 +76,13 @@ async def get_current_customer(token: str = Depends(oauth2_scheme)):
         
     if not user:
         raise credentials_exception
+    
+    # Block deactivated/deleted users from using old JWT tokens
+    if not user[0].get("is_active", True):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is deactivated"
+        )
         
     return user[0]
 
@@ -108,6 +115,13 @@ def decode_customer_token(token: str) -> dict:
     if not user:
         raise credentials_exception
 
+    # Block deactivated/deleted users from using old JWT tokens
+    if not user[0].get("is_active", True):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account is deactivated"
+        )
+
     return user[0]
 
 async def get_optional_current_customer(token: Optional[str] = Depends(oauth2_scheme_optional)):
@@ -128,6 +142,10 @@ async def get_optional_current_customer(token: Optional[str] = Depends(oauth2_sc
         user = db.select("app_users", filters={"phone_number": sub})
 
     if not user:
+        return None
+
+    # Deactivated users get no auth context (silent rejection for optional auth)
+    if not user[0].get("is_active", True):
         return None
 
     return user[0]

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Query, status
 from pydantic import BaseModel
 from typing import List, Optional
+from datetime import datetime
 from models import schemas
 from db.supabase_client import db
 from utils.auth import get_current_admin, get_current_customer
@@ -341,10 +342,16 @@ def delete_my_account(current_user: dict = Depends(get_current_customer)):
 def soft_delete_user_data(user_id: str) -> bool:
     """
     Utility: Performs cascading soft-deletes for a user.
+    Sets deleted_at to mark this as a user-initiated deletion (not admin block).
+    This allows the user to re-login and reactivate their account later
+    (required by Apple App Store Guideline 5.1.1).
     """
     try:
-        # 1. Update user status
-        db.update("app_users", user_id, {"is_active": False})
+        # 1. Update user status — set deleted_at to distinguish from admin blocks
+        db.update("app_users", user_id, {
+            "is_active": False,
+            "deleted_at": datetime.utcnow().isoformat()
+        })
         
         # 2. Inactivate owned stores
         def store_update(table):
@@ -366,7 +373,12 @@ def soft_delete_user_data(user_id: str) -> bool:
             return table.update({"status": "expired"}).eq("user_id", user_id)
         db.query("ad_banners", banner_update)
         
-        # 6. Cancel pending offers - if table exists (optional, based on schema research)
+        # 6. Deactivate device tokens (stop push notifications immediately)
+        def deactivate_tokens(table):
+            return table.update({"is_active": False}).eq("user_id", user_id)
+        db.query("device_tokens", deactivate_tokens)
+        
+        # 7. Cancel pending offers - if table exists (optional, based on schema research)
         try:
              def offer_update(table):
                 return table.update({"status": "rejected"}).or_(f"buyer_id.eq.{user_id},listing_id.in.(select id from listings where user_id = '{user_id}')")
